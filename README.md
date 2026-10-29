@@ -1,3 +1,5 @@
+> **prolfqua_bioc is the stripped-down Bioconductor version of prolfqua.** It is derived from [fgcz/prolfqua](https://github.com/fgcz/prolfqua) and exists only to be pushed to Bioconductor. To keep the Bioconductor build time short, most vignettes are excluded from the package build here. All vignettes, the full documentation (https://fgcz.github.io/prolfqua/), releases, and issue tracking are at [fgcz/prolfqua](https://github.com/fgcz/prolfqua). Make code changes in fgcz/prolfqua; they are merged into this repository from there.
+
 [![R-CMD-check-prolfqua](https://github.com/fgcz/prolfqua/actions/workflows/r.yaml/badge.svg)](https://github.com/fgcz/prolfqua/actions/workflows/r.yaml) ![ReleaseDownloads](https://img.shields.io/github/downloads/fgcz/prolfqua/total)
 [![codecov](https://codecov.io/gh/fgcz/prolfqua/branch/main/graph/badge.svg?token=NP7IPP323C)](https://app.codecov.io/gh/fgcz/prolfqua)
 [![DOI](https://img.shields.io/badge/DOI-10.1021%2Facs.jproteome.2c00441-blue)](https://pubs.acs.org/doi/10.1021/acs.jproteome.2c00441)
