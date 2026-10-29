@@ -1,7 +1,7 @@
 Package: prolfqua
 Type: Package
 Title: Proteomics Label Free Quantification
-Version: 0.99.4
+Version: 0.99.5
 Authors@R: c(
     person("Witold", "Wolski",
         email = "witold.wolski@fgcz.uzh.ch",
@@ -79,8 +79,9 @@ Suggests:
     SummarizedExperiment,
     testthat,
     vsn
-RoxygenNote: 7.3.3
 Roxygen: list(r6 = TRUE)
 Depends: 
     R (>= 4.6)
 biocViews: MassSpectrometry, Proteomics, Metabolomics, Normalization, Preprocessing, QualityControl
+Config/roxygen2/version: 8.1.1
+RoxygenNote: 7.3.3

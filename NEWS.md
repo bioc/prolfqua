@@ -1,4 +1,4 @@
-# prolfqua 0.99.2 (Bioconductor submission)
+# prolfqua 0.99.5 (Bioconductor)
 
 - Corresponds to prolfqua 1.9.0 on GitHub, which addresses the review in [BiocContributions #171](https://github.com/Bioconductor/BiocContributions/issues/171); the changes are listed below.
 - Requires R >= 4.6.
@@ -7,14 +7,28 @@
 
 Changes for the Bioconductor review ([BiocContributions #171](https://github.com/Bioconductor/BiocContributions/issues/171)).
 
+## New features
+
+- New method `binomial_firth_nested` (`ContrastsBinomialFirthNestedFacade`, `strategy_binomial_firth()`): the `binomial_nested` detection-count model with Firth's bias reduction in place of the fixed pseudo-count. Like `binomial_nested`, it sums peptide detections per protein and sample, so its dispersion and degrees of freedom come from the samples; unlike `firth_nested`, its p-values therefore do not grow more significant with the number of peptides. Log odds ratios stay finite for proteins detected in one group only.
+- New method `hurdle_nested` (`ContrastsHurdleNestedFacade`): a hurdle model from peptide-level input in one call, `build_contrast_analysis(method = "hurdle_nested")`. It aggregates to protein level with median polish, fits `lm_impute` to the protein intensities and `binomial_firth_nested` to the peptide detection, and combines them with `ContrastsHurdleFacade`. Being in the registry, it is also available to prolfquapp as a model.
+- `ContrastsHurdleFacade$new(intensity, detection)` combines a fitted intensity facade (`lm`, `lm_impute`, ...) with a fitted `firth_nested`, `binomial_nested` or `binomial_firth_nested` detection facade, as msqrob2's hurdle model does: `p.value` is Fisher's combination of the two component p-values, and `FDR` its BH adjustment within contrast. Proteins only one component estimates keep that component's p-value; fully detected proteins keep their intensity p-value. The component p-values, the detection log odds ratio and the combined statistic are extra columns. No model is fitted.
+
 ## Bug fixes
 
 - `citation("prolfqua")` works again: `inst/CITATION` contained a non-ASCII dash that `utils::readCitationFile()` could not read.
 
 ## Documentation
 
-- New introductory vignette `vignette("prolfqua")`: introduction, installation with BiocManager, a quick start, and links to all tutorials on the package website.
+- New introductory vignette `vignette("prolfqua")`: the prolfqua hex logo, introduction, installation with BiocManager, a quick start using `lm_impute`, and links to all tutorials on the package website.
+- New vignette `vignette("ModellingMethods")`: runs every `build_contrast_analysis()` method on one small simulated dataset, with one summary line per method; it renders in a few seconds.
+- The package now ships three vignettes (`prolfqua`, `Comparing2Groups`, `ModellingMethods`). The other tutorials are website-only articles at <https://fgcz.github.io/prolfqua/articles/>, under the same URLs as before, which keeps the package build short.
+- The vignettes and articles use `build_contrast_analysis()` throughout. `Comparing2Groups` and "Simulate Peptide level Data" fit their contrasts with `lm_impute` (proteins) and `lm` (peptides) in one call instead of building models and contrasts by hand.
+- The articles "Limma Backend", "DEqMS-style Count-Dependent Variance Moderation", "Modelling dataset with two Factors" and "Using limpa Directly" are removed: `ModellingMethods` and the articles "Comparing modelling methods on one dataset" and "Two-factor designs" cover their methods through `build_contrast_analysis()`.
+- The imputation article is rewritten and renamed "Absent, not unknown: proteins missing in a whole group": what `lm` loses when a group has no observations, how the LOD is estimated, how `lm_impute` refits and borrows the variance, the other imputing methods, and `impute_from_model()`. It moved to `articles/ModelBasedImputation.html` and shows heatmaps and PCA plots before and after imputation; the old `TestingMissingInference.html` link redirects there.
+- Articles renamed so that file names say what they cover: `ContrastFacades` is now `ComparingMethods` ("Comparing modelling methods on one dataset"), `ContrastFacade2Factor` is `TwoFactorDesigns` ("Two-factor designs"), `Contrasts_from_factors` is `ContrastsFromFactors`. `CreatingConfigurations` is titled "Importing your data: AnalysisConfiguration". The old URLs redirect to the new ones.
+- New article "Under the hood: strategy, model and contrasts": the `lm` method built step by step (`strategy_lm()`, `build_model()`, `Contrasts`, `ContrastsModerated`), giving the same result as `build_contrast_analysis()`, with model inspection, unmoderated contrasts and `register_facade()`.
 - `Comparing2Groups` describes the simulated data it actually uses (the text still referred to MaxQuant Ionstar data) and no longer looks up protein IDs that do not exist in it. Both vignettes use BiocStyle.
+- The vignettes cite the published article (Wolski et al., J. Proteome Res. 2023, 22(4), 1092-1104, doi:10.1021/acs.jproteome.2c00441) instead of the 2022 bioRxiv preprint. `citation("prolfqua")` lists the journal, volume, issue and pages in their own fields, and the README BibTeX no longer swaps volume and issue.
 - `?prolfqua` opens a package overview page.
 - Typos fixed across the help pages, vignettes and README.
 

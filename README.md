@@ -1,4 +1,4 @@
-> **prolfqua_bioc is the stripped-down Bioconductor version of prolfqua.** It is derived from [fgcz/prolfqua](https://github.com/fgcz/prolfqua) and exists only to be pushed to Bioconductor. To keep the Bioconductor build time short, most vignettes are excluded from the package build here. All vignettes, the full documentation (https://fgcz.github.io/prolfqua/), releases, and issue tracking are at [fgcz/prolfqua](https://github.com/fgcz/prolfqua). Make code changes in fgcz/prolfqua; they are merged into this repository from there.
+> **prolfqua_bioc is the Bioconductor copy of [fgcz/prolfqua](https://github.com/fgcz/prolfqua).** It exists only to be pushed to Bioconductor and differs from fgcz/prolfqua only in the version number (Bioconductor numbering) and the R requirement. The package ships three vignettes; all tutorials, the full documentation (https://fgcz.github.io/prolfqua/), releases and issue tracking are at [fgcz/prolfqua](https://github.com/fgcz/prolfqua). Make code changes in fgcz/prolfqua; they are merged into this repository from there.
 
 [![R-CMD-check-prolfqua](https://github.com/fgcz/prolfqua/actions/workflows/r.yaml/badge.svg)](https://github.com/fgcz/prolfqua/actions/workflows/r.yaml) ![ReleaseDownloads](https://img.shields.io/github/downloads/fgcz/prolfqua/total)
 [![codecov](https://codecov.io/gh/fgcz/prolfqua/branch/main/graph/badge.svg?token=NP7IPP323C)](https://app.codecov.io/gh/fgcz/prolfqua)
@@ -160,7 +160,7 @@ Document's explaining how to run an analysis with prolfqua are at github.io [htt
 
 - [Comparing two Conditions](https://fgcz.github.io/prolfqua/articles/Comparing2Groups.html)
 - [QC and protein wise sample size estimation](https://fgcz.github.io/prolfqua/articles/QualityControlAndSampleSizeEstimation.html)
-- [Analysing factorial designs](https://fgcz.github.io/prolfqua/articles/Modelling2Factors.html)
+- [Analysing factorial designs](https://fgcz.github.io/prolfqua/articles/TwoFactorDesigns.html)
 
 Example QC and sample size report
 
@@ -183,9 +183,9 @@ Please do reference the [prolfqua article at Journal of Proteome Research](https
 author = {Wolski, Witold E. and Nanni, Paolo and Grossmann, Jonas and d’Errico, Maria and Schlapbach, Ralph and Panse, Christian},
 title = {prolfqua: A Comprehensive R-Package for Proteomics Differential Expression Analysis},
 journal = {Journal of Proteome Research},
-volume = {4},
-number = {22},
-pages = {1092–1104},
+volume = {22},
+number = {4},
+pages = {1092--1104},
 year = {2023},
 doi = {10.1021/acs.jproteome.2c00441},
     note = {PMID: 36939687},

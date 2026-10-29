@@ -1,4 +1,4 @@
-url: https://wolski.github.io/prolfqua/
+url: https://fgcz.github.io/prolfqua/
 
 template:
   bootstrap: 5
@@ -13,5 +13,12 @@ navbar:
   components:
     github:
       icon: fa-github
-      href: https://github.com/wolski/prolfqua
+      href: https://github.com/fgcz/prolfqua
       aria-label: GitHub repository
+
+redirects:
+  - ["articles/TestingMissingInference.html", "articles/ModelBasedImputation.html"]
+  - ["articles/LODImputation.html", "articles/ModelBasedImputation.html"]
+  - ["articles/ContrastFacades.html", "articles/ComparingMethods.html"]
+  - ["articles/ContrastFacade2Factor.html", "articles/TwoFactorDesigns.html"]
+  - ["articles/Contrasts_from_factors.html", "articles/ContrastsFromFactors.html"]

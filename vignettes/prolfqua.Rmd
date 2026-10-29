@@ -3,8 +3,6 @@ title: "Introduction to prolfqua"
 author:
   - name: Witold E. Wolski
     affiliation: Functional Genomics Center Zurich (FGCZ), ETH Zurich and University of Zurich
-  - name: Christian Panse
-    affiliation: Functional Genomics Center Zurich (FGCZ), ETH Zurich and University of Zurich
 package: prolfqua
 output: BiocStyle::html_document
 vignette: >
@@ -23,15 +21,31 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE, warning 
    knitr::include_graphics("prolfqua_logo.png")
 ```
 
+# Documentation
+
+The package website <https://fgcz.github.io/prolfqua/> holds the full set of tutorials:
+
+- [Importing your data](https://fgcz.github.io/prolfqua/articles/CreatingConfigurations.html): reading your own data into an `AnalysisConfiguration`
+- [Comparing two groups](https://fgcz.github.io/prolfqua/articles/Comparing2Groups.html): QC, normalization and contrasts with `lm_impute`
+- [QC and sample size estimation](https://fgcz.github.io/prolfqua/articles/QualityControlAndSampleSizeEstimation.html)
+- [Comparing modelling methods on one dataset](https://fgcz.github.io/prolfqua/articles/ComparingMethods.html): all `build_contrast_analysis()` methods side by side
+- [Two-factor designs](https://fgcz.github.io/prolfqua/articles/TwoFactorDesigns.html)
+- [Contrasts from factors](https://fgcz.github.io/prolfqua/articles/ContrastsFromFactors.html)
+- [Absent, not unknown: proteins missing in a whole group](https://fgcz.github.io/prolfqua/articles/ModelBasedImputation.html): model-based imputation with `lm_impute` and `impute_from_model()`
+- [Simulating peptide-level data](https://fgcz.github.io/prolfqua/articles/SimulateData.html)
+- [Under the hood: strategy, model and contrasts](https://fgcz.github.io/prolfqua/articles/LowLevelAPI.html): the classes behind `build_contrast_analysis()`
+
+The vignettes [Comparing two groups with prolfqua](Comparing2Groups.html) and [All modelling methods at a glance](ModellingMethods.html) are also part of this package.
+
 # Introduction
 
-prolfqua covers the steps of a label-free quantification (LFQ) proteomics analysis: quality control, normalization, aggregation of peptides to proteins, modelling, hypothesis testing and sample size estimation [@Wolski2022.06.07.494524].
+prolfqua covers the steps of a label-free quantification (LFQ) proteomics analysis: quality control, normalization, aggregation of peptides to proteins, modelling, hypothesis testing and sample size estimation [@Wolski2023prolfqua].
 
 The package works with data in long format, one row per measured feature (protein, peptide, precursor) and sample. Three building blocks carry an analysis:
 
 - `AnalysisConfiguration` maps the columns of the table to their roles: the feature hierarchy (protein, peptide, ...), the explanatory factors, the sample and the intensity column.
 - `LFQData` holds the data together with its configuration. Its methods return helpers for transformation (`get_Transformer()`), aggregation (`get_Aggregator()`), summary statistics (`get_Stats()`), missing-value summaries (`get_Summariser()`) and plots (`get_Plotter()`).
-- `build_contrast_analysis()` fits a model per protein and computes the requested contrasts. The `method` argument selects the model: linear models (`lm`, `rlm`, `rfit`), limma and limma-voom, DEqMS variance moderation, Firth logistic regression for presence/absence, mixed models and ROPECA on peptide-level data, and variants that impute groups without observations at the limit of detection.
+- `build_contrast_analysis()` fits a model per protein and computes the requested contrasts. The `method` argument selects the model: linear models (`lm`, `rlm`, `rfit`), limma and limma-voom, DEqMS variance moderation, limpa's detection probability model, Firth logistic and binomial models of detection, mixed models and ROPECA on peptide-level data, a hurdle model combining intensity and detection, and variants that impute groups without observations at the limit of detection.
 
 Every method returns an object with the same interface: `get_contrasts()`, `get_Plotter()`, `get_missing()` and `to_wide()`. Results of different methods therefore have the same columns and can be compared or combined directly.
 
@@ -74,14 +88,14 @@ lfqprot <- lfqdata$get_Aggregator()$aggregate()
 lfqprot$get_Plotter()$intensity_distribution_density()
 ```
 
-We compare groups `A` and `B` with the control group, using limma's moderated linear model.
+We compare groups `A` and `B` with the control group using `lm_impute`: a linear model per protein with moderated variances. Proteins whose fit fails because a group has no observations are refitted with the missing values imputed at the limit of detection, borrowing the variance from the other proteins.
 
 ```{r contrasts}
 contrasts <- c(
   "A_vs_Ctrl" = "group_A - group_Ctrl",
   "B_vs_Ctrl" = "group_B - group_Ctrl"
 )
-fa <- build_contrast_analysis(lfqprot, "~ group_", contrasts, method = "limma")
+fa <- build_contrast_analysis(lfqprot, "~ group_", contrasts, method = "lm_impute")
 res <- fa$get_contrasts()
 head(res[, c("protein_Id", "contrast", "diff", "p.value", "FDR")])
 ```
@@ -90,30 +104,11 @@ head(res[, c("protein_Id", "contrast", "diff", "p.value", "FDR")])
 fa$get_Plotter()$volcano()$FDR
 ```
 
-All available methods are listed by `list_facades()`:
+All available methods are listed by `list_facades()`; the vignette [All modelling methods at a glance](ModellingMethods.html) runs each of them on one small dataset.
 
 ```{r facades}
 names(list_facades())
 ```
-
-# Further documentation
-
-The package website <https://fgcz.github.io/prolfqua/> holds the full set of tutorials:
-
-- [Comparing two groups](https://fgcz.github.io/prolfqua/articles/Comparing2Groups.html): QC, normalization, linear models and moderated contrasts
-- [Creating configurations](https://fgcz.github.io/prolfqua/articles/CreatingConfigurations.html): reading your own data into an `AnalysisConfiguration`
-- [QC and sample size estimation](https://fgcz.github.io/prolfqua/articles/QualityControlAndSampleSizeEstimation.html)
-- [Contrast facades with parallel designs](https://fgcz.github.io/prolfqua/articles/ContrastFacades.html): all `build_contrast_analysis()` methods side by side
-- [Contrast facades with a two-factor design](https://fgcz.github.io/prolfqua/articles/ContrastFacade2Factor.html)
-- [Modelling a dataset with two factors](https://fgcz.github.io/prolfqua/articles/Modelling2Factors.html)
-- [Contrasts from factors](https://fgcz.github.io/prolfqua/articles/Contrasts_from_factors.html)
-- [Limma backend](https://fgcz.github.io/prolfqua/articles/LimmaBackend.html)
-- [DEqMS count-dependent variance moderation](https://fgcz.github.io/prolfqua/articles/DEqMS_Moderation.html)
-- [Using limpa](https://fgcz.github.io/prolfqua/articles/limpa_example.html)
-- [Simulating peptide-level data](https://fgcz.github.io/prolfqua/articles/SimulateData.html)
-- [Imputing data at the limit of detection](https://fgcz.github.io/prolfqua/articles/TestingMissingInference.html)
-
-The vignette [Comparing two groups with prolfqua](Comparing2Groups.html) is also part of this package.
 
 # Session info
 
