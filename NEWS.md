@@ -1,4 +1,4 @@
-# prolfqua 0.99.5 (Bioconductor)
+# prolfqua 0.99.6 (Bioconductor)
 
 - Corresponds to prolfqua 1.9.0 on GitHub, which addresses the review in [BiocContributions #171](https://github.com/Bioconductor/BiocContributions/issues/171); the changes are listed below.
 - Requires R >= 4.6.
@@ -19,12 +19,14 @@ Changes for the Bioconductor review ([BiocContributions #171](https://github.com
 
 ## Documentation
 
-- New introductory vignette `vignette("prolfqua")`: the prolfqua hex logo, introduction, installation with BiocManager, a quick start using `lm_impute`, and links to all tutorials on the package website.
+- New introductory vignette `vignette("prolfqua")`: the prolfqua hex logo, links to all tutorials on the package website, an introduction centred on `build_contrast_analysis()` with a figure of it as a factory rolling out all modelling methods, installation with BiocManager, and a quick start using `lm_impute`.
+- `?build_contrast_analysis` describes the function as the factory of the modelling methods and lists all 20 built-in methods by family, including `binomial_firth_nested` and `hurdle_nested`, which were missing.
+- The package description names `build_contrast_analysis()` and the modelling methods it offers.
 - New vignette `vignette("ModellingMethods")`: runs every `build_contrast_analysis()` method on one small simulated dataset, with one summary line per method; it renders in a few seconds.
 - The package now ships three vignettes (`prolfqua`, `Comparing2Groups`, `ModellingMethods`). The other tutorials are website-only articles at <https://fgcz.github.io/prolfqua/articles/>, under the same URLs as before, which keeps the package build short.
 - The vignettes and articles use `build_contrast_analysis()` throughout. `Comparing2Groups` and "Simulate Peptide level Data" fit their contrasts with `lm_impute` (proteins) and `lm` (peptides) in one call instead of building models and contrasts by hand.
 - The articles "Limma Backend", "DEqMS-style Count-Dependent Variance Moderation", "Modelling dataset with two Factors" and "Using limpa Directly" are removed: `ModellingMethods` and the articles "Comparing modelling methods on one dataset" and "Two-factor designs" cover their methods through `build_contrast_analysis()`.
-- The imputation article is rewritten and renamed "Absent, not unknown: proteins missing in a whole group": what `lm` loses when a group has no observations, how the LOD is estimated, how `lm_impute` refits and borrows the variance, the other imputing methods, and `impute_from_model()`. It moved to `articles/ModelBasedImputation.html` and shows heatmaps and PCA plots before and after imputation; the old `TestingMissingInference.html` link redirects there.
+- The imputation article is rewritten and renamed "Filling the gaps: model-based imputation for heatmaps and PCA": why heatmaps and PCA need a complete matrix, why proteins missing in a whole group matter (below the LOD or switched off), how `impute_from_model()` fills the matrix from the `lm_impute` models and the LOD, heatmaps and PCA before and after imputation, and the caveats. It moved to `articles/ModelBasedImputation.html`; the old `TestingMissingInference.html` link redirects there.
 - Articles renamed so that file names say what they cover: `ContrastFacades` is now `ComparingMethods` ("Comparing modelling methods on one dataset"), `ContrastFacade2Factor` is `TwoFactorDesigns` ("Two-factor designs"), `Contrasts_from_factors` is `ContrastsFromFactors`. `CreatingConfigurations` is titled "Importing your data: AnalysisConfiguration". The old URLs redirect to the new ones.
 - New article "Under the hood: strategy, model and contrasts": the `lm` method built step by step (`strategy_lm()`, `build_model()`, `Contrasts`, `ContrastsModerated`), giving the same result as `build_contrast_analysis()`, with model inspection, unmoderated contrasts and `register_facade()`.
 - `Comparing2Groups` describes the simulated data it actually uses (the text still referred to MaxQuant Ionstar data) and no longer looks up protein IDs that do not exist in it. Both vignettes use BiocStyle.
