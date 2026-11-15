@@ -38,6 +38,61 @@ test_that("LFQData filtering and subsetting", {
   expect_s3_class(sub, "LFQData")
 })
 
+test_that("filter_proteins_by_peptide_count counts the second hierarchy level within the first", {
+  kept_proteins <- function(lfq) sort(unique(lfq$data_long()$protein_Id))
+
+  by_default <- lfqdata$get_copy()$filter_proteins_by_peptide_count()
+  explicit <- lfqdata$get_copy()$filter_proteins_by_peptide_count(
+    threshold = 2,
+    parent = "protein_Id",
+    child = "peptide_Id"
+  )
+  expect_equal(by_default$data_long(), explicit$data_long())
+  peptides_per_protein <- dplyr::summarize(
+    by_default$data_long(),
+    n = dplyr::n_distinct(peptide_Id),
+    .by = "protein_Id"
+  )
+  expect_true(all(peptides_per_protein$n >= 2))
+
+  # peptide-level modelling (hierarchy_depth 2) used to make this a no-op
+  depth2 <- lfqdata$get_copy()
+  depth2$set_config_value("hierarchy_depth", 2)
+  depth2$filter_proteins_by_peptide_count()
+  expect_equal(kept_proteins(depth2), kept_proteins(by_default))
+
+  stricter <- lfqdata$get_copy()$filter_proteins_by_peptide_count(threshold = 3)
+  expect_true(all(kept_proteins(stricter) %in% kept_proteins(by_default)))
+
+  prot <- sim_lfq_data_protein_config()
+  lfq_prot <- LFQData$new(prot$data, prot$config)
+  expect_error(lfq_prot$filter_proteins_by_peptide_count(), class = "prolfqua_error_bad_argument")
+  expect_error(
+    lfqdata$get_copy()$filter_proteins_by_peptide_count(child = "no_such_column"),
+    class = "prolfqua_error_missing_column"
+  )
+
+  expect_gt(nrow(prolfqua_data("data_ionstar")$filtered()$data), 0)
+})
+
+test_that("rename_response and the is_transformed setter return the object", {
+  lfq <- lfqdata$get_copy()
+  expect_identical(lfq$is_transformed(TRUE), lfq)
+  expect_true(lfq$is_transformed())
+
+  old <- lfq$response()
+  expect_identical(lfq$rename_response(old), lfq)
+  expect_equal(lfq$response(), old)
+
+  expect_error(lfq$rename_response(lfq$file_name()), class = "prolfqua_error_bad_argument")
+  expect_equal(lfq$response(), old)
+
+  expect_identical(lfq$rename_response("transformedIntensity"), lfq)
+  expect_equal(lfq$response(), "transformedIntensity")
+  expect_true("transformedIntensity" %in% colnames(lfq$data_long()))
+  expect_false(old %in% colnames(lfq$data_long()))
+})
+
 test_that("remove_small_intensities re-establishes explicit missing rows", {
   istar_missing <- sim_lfq_data_peptide_config(Nprot = 5, weight_missing = 1, seed = 1)
   lfq_missing <- LFQData$new(istar_missing$data, istar_missing$config)
@@ -207,4 +262,27 @@ test_that("Transformer and Summariser deep-clone their input", {
 
   sm <- lfq_copy$get_Summariser()
   expect_false(identical(sm$lfq, lfq_copy))
+})
+
+test_that("tidy_to_wide_config takes the row keys", {
+  default <- tidy_to_wide_config(lfqdata, as.matrix = TRUE)
+  no_label <- tidy_to_wide_config(lfqdata, as.matrix = TRUE, row_keys = lfqdata$hierarchy_keys())
+  expect_equal(dim(no_label$data), dim(default$data))
+  expect_false(any(grepl(lfqdata$data_long()[[lfqdata$isotope_label()]][1], rownames(no_label$data), fixed = TRUE)))
+  expect_equal(colnames(no_label$rowdata), lfqdata$hierarchy_keys())
+
+  # two isotope labels: the hierarchy keys alone do not identify a row
+  heavy <- dplyr::mutate(lfqdata$data_long(), !!lfqdata$isotope_label() := "heavy")
+  two_labels <- LFQData$new(dplyr::bind_rows(lfqdata$data_long(), heavy), lfqdata$get_config())
+  expect_error(
+    tidy_to_wide_config(two_labels, row_keys = two_labels$hierarchy_keys()),
+    class = "prolfqua_error_bad_argument"
+  )
+})
+
+test_that("get_Aggregator offers limpa", {
+  skip_if_not_installed("limpa")
+  lfq_log2 <- lfqdata$get_Transformer()$log2()$lfq
+  expect_s3_class(lfq_log2$get_Aggregator("limpa"), "AggregateLimpa")
+  expect_error(lfq_log2$get_Aggregator("nope"), class = "prolfqua_error_bad_argument")
 })

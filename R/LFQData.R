@@ -158,13 +158,13 @@ LFQData <- R6::R6Class(
     #' @description
     #' is data transformed
     #' @param is_transformed logical
-    #' @return logical
+    #' @return logical when called without argument, otherwise self (invisible)
     is_transformed = function(is_transformed) {
       if (missing(is_transformed)) {
         return(private$.config$is_response_transformed)
-      } else {
-        private$.config$is_response_transformed <- is_transformed
       }
+      private$.config$is_response_transformed <- is_transformed
+      invisible(self)
     },
     #' @description
     #' some software is reporting NA's as 0, you must remove it from your data
@@ -176,15 +176,29 @@ LFQData <- R6::R6Class(
       invisible(self)
     },
     #' @description
-    #' remove proteins with less than X peptides
-    #' @return self
-    filter_proteins_by_peptide_count = function() {
+    #' remove parents (e.g. proteins) with fewer than `threshold` distinct
+    #' children (e.g. peptides) and add the count as a column. By default the
+    #' second hierarchy level is counted within the first, independent of
+    #' `hierarchy_depth`; a hierarchy with one level is an error.
+    #' @param threshold minimum number of children, default `config$min_peptides_protein`
+    #' @param parent parent key column, default the first hierarchy key
+    #' @param child child key column, default the second hierarchy key
+    #' @return self (invisible)
+    filter_proteins_by_peptide_count = function(threshold = NULL, parent = NULL, child = NULL) {
       cfg <- self$get_config()
-      message("removing proteins with less than: ", cfg$min_peptides_protein, " peptpides")
-      filtered <- filter_proteins_by_peptide_count(self$data_long(), cfg)
-      if (!is.null(filtered$name)) {
-        message("Column added : ", filtered$name)
-      }
+      keys <- cfg$hierarchy_keys()
+      parent <- parent %||% keys[1]
+      child <- child %||% keys[2]
+      threshold <- threshold %||% cfg$min_peptides_protein
+      message("removing ", parent, " with fewer than ", threshold, " ", child)
+      filtered <- filter_proteins_by_peptide_count(
+        self$data_long(),
+        cfg,
+        parent = parent,
+        child = child,
+        threshold = threshold
+      )
+      message("Column added : ", filtered$name)
       private$.data <- filtered$data
       invisible(self)
     },
@@ -199,6 +213,19 @@ LFQData <- R6::R6Class(
       top <- self$hierarchy_keys()[1]
       pdata <- self$data_long()
       keep <- !prolfqua::is_decoy(pdata[[top]], self$get_config()$pattern_decoys)
+      return(LFQData$new(pdata[keep, , drop = FALSE], self$get_config()))
+    },
+    #' @description
+    #' remove contaminant entries (rows whose top-level hierarchy id, e.g.
+    #' protein_Id, is a contaminant). Detection uses the configured
+    #' `pattern_contaminants` unioned with the built-in defaults (see
+    #' \code{\link{is_contaminant}}). Returns a new contaminant-free LFQData
+    #' (self is not modified).
+    #' @return LFQData without contaminants
+    remove_contaminants = function() {
+      top <- self$hierarchy_keys()[1]
+      pdata <- self$data_long()
+      keep <- !prolfqua::is_contaminant(pdata[[top]], self$get_config()$pattern_contaminants)
       return(LFQData$new(pdata[keep, , drop = FALSE], self$get_config()))
     },
     #' @description
@@ -302,18 +329,22 @@ LFQData <- R6::R6Class(
       private$.data
     },
     #' @description
-    #' new name of response variable
+    #' new name of response variable. Renaming to the current response name
+    #' changes nothing; renaming to another existing column is an error.
     #' @param newname default Intensity
+    #' @return self (invisible)
     rename_response = function(newname = "Intensity") {
-      if ((newname %in% colnames(self$data_long()))) {
-        msg <- paste(newname, " already in data :", paste(colnames(self$data_long()), collapse = " "), ".")
-        message(msg)
-      } else {
-        cfg <- self$get_config()
-        old <- cfg$pop_response()
-        cfg$set_response(newname)
-        private$.data <- self$data_long() |> dplyr::rename(!!newname := !!sym(old))
+      if (identical(newname, self$response())) {
+        return(invisible(self))
       }
+      if (newname %in% colnames(self$data_long())) {
+        abort_bad_argument("newname", "not name an existing column", not = newname)
+      }
+      cfg <- self$get_config()
+      old <- cfg$pop_response()
+      cfg$set_response(newname)
+      private$.data <- self$data_long() |> dplyr::rename(!!newname := !!sym(old))
+      invisible(self)
     },
     #' @description
     #' number of elements at each level
@@ -359,16 +390,17 @@ LFQData <- R6::R6Class(
     },
     #' @description
     #' get Aggregator
-    #' @param method aggregation method: "medpolish", "rlm", or "topN"
-    #' @param ... passed to aggregator constructor (e.g. prefix, N, func)
-    #' @return AggregateMedpolish, AggregateRlm, or AggregateTopN
+    #' @param method aggregation method: "medpolish", "rlm", "topN", or "limpa"
+    #' @param ... passed to aggregator constructor (e.g. prefix, N, func, dpc_slope)
+    #' @return AggregateMedpolish, AggregateRlm, AggregateTopN, or AggregateLimpa
     get_Aggregator = function(method = "medpolish", ...) {
       switch(
         method,
         "medpolish" = AggregateMedpolish$new(self, ...),
         "rlm" = AggregateRlm$new(self, ...),
         "topN" = AggregateTopN$new(self, ...),
-        abort_bad_argument("method", 'be one of: "medpolish", "rlm", "topN"', not = method)
+        "limpa" = AggregateLimpa$new(self, ...),
+        abort_bad_argument("method", 'be one of: "medpolish", "rlm", "topN", "limpa"', not = method)
       )
     }
   )

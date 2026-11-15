@@ -82,6 +82,7 @@ Other LFQData:
     \item \href{#method-LFQData-remove_small_intensities}{\code{LFQData$remove_small_intensities()}}
     \item \href{#method-LFQData-filter_proteins_by_peptide_count}{\code{LFQData$filter_proteins_by_peptide_count()}}
     \item \href{#method-LFQData-remove_decoys}{\code{LFQData$remove_decoys()}}
+    \item \href{#method-LFQData-remove_contaminants}{\code{LFQData$remove_contaminants()}}
     \item \href{#method-LFQData-decoy_proportion}{\code{LFQData$decoy_proportion()}}
     \item \href{#method-LFQData-complete_cases}{\code{LFQData$complete_cases()}}
     \item \href{#method-LFQData-data_wide}{\code{LFQData$data_wide()}}
@@ -268,7 +269,7 @@ Other LFQData:
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    logical
+    logical when called without argument, otherwise self (invisible)
   }
 }
 
@@ -298,14 +299,30 @@ Other LFQData:
 \if{html}{\out{<a id="method-LFQData-filter_proteins_by_peptide_count"></a>}}
 \if{latex}{\out{\hypertarget{method-LFQData-filter_proteins_by_peptide_count}{}}}
 \subsection{\code{LFQData$filter_proteins_by_peptide_count()}}{
-  remove proteins with less than X peptides
+  remove parents (e.g. proteins) with fewer than `threshold` distinct
+children (e.g. peptides) and add the count as a column. By default the
+second hierarchy level is counted within the first, independent of
+`hierarchy_depth`; a hierarchy with one level is an error.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{LFQData$filter_proteins_by_peptide_count()}
+    \preformatted{LFQData$filter_proteins_by_peptide_count(
+  threshold = NULL,
+  parent = NULL,
+  child = NULL
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{threshold}}{minimum number of children, default `config$min_peptides_protein`}
+      \item{\code{parent}}{parent key column, default the first hierarchy key}
+      \item{\code{child}}{child key column, default the second hierarchy key}
+    }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    self
+    self (invisible)
   }
 }
 
@@ -325,6 +342,25 @@ is configured. Returns a new decoy-free LFQData (self is not modified).
   }
   \subsection{Returns}{
     LFQData without decoys
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-LFQData-remove_contaminants"></a>}}
+\if{latex}{\out{\hypertarget{method-LFQData-remove_contaminants}{}}}
+\subsection{\code{LFQData$remove_contaminants()}}{
+  remove contaminant entries (rows whose top-level hierarchy id, e.g.
+protein_Id, is a contaminant). Detection uses the configured
+`pattern_contaminants` unioned with the built-in defaults (see
+\code{\link{is_contaminant}}). Returns a new contaminant-free LFQData
+(self is not modified).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{LFQData$remove_contaminants()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    LFQData without contaminants
   }
 }
 
@@ -544,7 +580,8 @@ signal. Decoy status derives from the top-level hierarchy id (protein_Id).
 \if{html}{\out{<a id="method-LFQData-rename_response"></a>}}
 \if{latex}{\out{\hypertarget{method-LFQData-rename_response}{}}}
 \subsection{\code{LFQData$rename_response()}}{
-  new name of response variable
+  new name of response variable. Renaming to the current response name
+changes nothing; renaming to another existing column is an error.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{LFQData$rename_response(newname = "Intensity")}
@@ -556,6 +593,9 @@ signal. Decoy status derives from the top-level hierarchy id (protein_Id).
       \item{\code{newname}}{default Intensity}
     }
     \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    self (invisible)
   }
 }
 
@@ -666,13 +706,13 @@ signal. Decoy status derives from the top-level hierarchy id (protein_Id).
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{method}}{aggregation method: "medpolish", "rlm", or "topN"}
-      \item{\code{...}}{passed to aggregator constructor (e.g. prefix, N, func)}
+      \item{\code{method}}{aggregation method: "medpolish", "rlm", "topN", or "limpa"}
+      \item{\code{...}}{passed to aggregator constructor (e.g. prefix, N, func, dpc_slope)}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    AggregateMedpolish, AggregateRlm, or AggregateTopN
+    AggregateMedpolish, AggregateRlm, AggregateTopN, or AggregateLimpa
   }
 }
 
