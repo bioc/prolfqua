@@ -70,33 +70,38 @@
   data
 }
 
-.add_setup_default_column <- function(data, column, value, warning_message) {
+.add_setup_default_column <- function(data, column, value, text, notify) {
   if (column %in% colnames(data)) {
     return(data)
   }
-  warning(warning_message)
+  notify(text)
   data[[column]] <- value
   data
 }
 
+# isotopeLabel and qValue are optional and only reported. A missing nr_children
+# warns: the default of 1 changes the fitting weights of aggregated data.
 .add_setup_default_columns <- function(data, configuration) {
   data <- .add_setup_default_column(
     data,
     configuration$isotope_label,
     "light",
-    "no isotopeLabel column specified in the data, adding column isotopeLabel automatically and setting to 'light'."
+    "no isotopeLabel column specified in the data, adding column isotopeLabel automatically and setting to 'light'.",
+    message
   )
   data <- .add_setup_default_column(
     data,
     configuration$ident_q_value,
     0,
-    "no qValue column specified in the data. Creating column qValue and setting qValues to 0."
+    "no qValue column specified in the data. Creating column qValue and setting qValues to 0.",
+    message
   )
   .add_setup_default_column(
     data,
     configuration$nr_children,
     1,
-    "no nr_children column specified in the data, adding column nr_children and setting to 1."
+    "no nr_children column specified in the data, adding column nr_children and setting to 1.",
+    warning
   )
 }
 
@@ -239,7 +244,16 @@ setup_analysis <- function(data, configuration, debug = FALSE) {
 separate_hierarchy <- function(data, config) {
   for (hkey in config$hierarchy_keys_depth()) {
     if (length(config$hierarchy[[hkey]]) == 1 && hkey == config$hierarchy[[hkey]]) {} else {
-      data <- data |> tidyr::separate(hkey, config$hierarchy[[hkey]], sep = config$sep, remove = FALSE)
+      data <- data |>
+        tidyr::separate_wider_delim(
+          dplyr::all_of(hkey),
+          delim = config$sep,
+          names = config$hierarchy[[hkey]],
+          too_few = "align_start",
+          too_many = "drop",
+          cols_remove = FALSE
+        ) |>
+        dplyr::relocate(dplyr::all_of(hkey), .before = dplyr::all_of(config$hierarchy[[hkey]][1]))
     }
   }
   return(data)
@@ -302,7 +316,7 @@ sample_subset <- function(size, pdata, hierarchy_keys_depth) {
   keys <- paste(hierarchy_keys_depth, collapse = ",")
   message("Sampling ", size, " ", keys)
   hkdf <- pdata |> select(all_of(hierarchy_keys_depth)) |> distinct() |> sample_n(size = size)
-  sdata <- inner_join(hkdf, pdata)
+  sdata <- inner_join(hkdf, pdata, by = hierarchy_keys_depth)
   return(sdata)
 }
 

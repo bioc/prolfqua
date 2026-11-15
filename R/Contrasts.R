@@ -52,7 +52,7 @@
 
   avg_abd$contrast <- gsub("^avg_", "", avg_abd$contrast)
   avg_abd <- avg_abd |> dplyr::rename(avgAbd = "diff")
-  contrast_result <- left_join(differences, avg_abd)
+  contrast_result <- left_join(differences, avg_abd, by = c(subject_id, "contrast"))
 
   contrast_result <- p.adjust(contrast_result, column = "p.value", group_by_col = "contrast")
   contrast_result <- contrast_result |> relocate("FDR", .after = "diff")
@@ -199,9 +199,7 @@ Contrasts <- R6::R6Class(
     #'
     get_contrasts = function(all = FALSE) {
       if (is.null(self$contrast_result)) {
-        message("determine linear functions:")
         linfct <- self$get_linfct(global = self$global)
-        message("get_contrasts -> contrasts_linfct")
         contrast_result <- contrasts_linfct(
           self$models,
           linfct,

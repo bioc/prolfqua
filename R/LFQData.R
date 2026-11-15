@@ -128,6 +128,14 @@ LFQData <- R6::R6Class(
       return(self$clone(deep = TRUE))
     },
     #' @description
+    #' can the data be aggregated, i.e. is there a hierarchy level below the
+    #' modelled one (`hierarchy_depth`)
+    #' @return logical
+    is_aggregatable = function() {
+      n_levels <- length(self$hierarchy_keys())
+      n_levels > 1 && length(self$relevant_hierarchy_keys()) < n_levels
+    },
+    #' @description
     #' samples subset of data
     #' @param size size of subset default 100
     #' @param seed set seed
@@ -147,7 +155,7 @@ LFQData <- R6::R6Class(
     #' @param x data frame with columns containing subject_id
     get_subset = function(x) {
       x <- select(x, any_of(self$subject_id())) |> distinct()
-      subset <- inner_join(x, self$data_long())
+      subset <- inner_join(x, self$data_long(), by = colnames(x))
       return(LFQData$new(subset, self$get_config()))
     },
     #' @description
@@ -424,20 +432,18 @@ LFQData <- R6::R6Class(
 #' }
 #'
 LFQDataToSummarizedExperiment <- function(lfqdata) {
-  if (requireNamespace("SummarizedExperiment")) {
-    wide <- lfqdata$data_wide(as.matrix = TRUE)
-    ann <- data.frame(wide$annotation)
-    rownames(ann) <- wide$annotation[[lfqdata$sample_name()]]
-    assays <- S4Vectors::SimpleList(LFQ = wide$data)
-    if ("nr_children" %in% lfqdata$get_config()$value_vars()) {
-      nr_children <- lfqdata$data_wide(as.matrix = TRUE, value = "nr_children")
-      assays[["nr_children"]] <- nr_children$data
-    }
-    se <- SummarizedExperiment::SummarizedExperiment(
-      assays,
-      colData = ann,
-      rowData = wide$rowdata
-    )
-    return(se)
+  rlang::check_installed(c("SummarizedExperiment", "S4Vectors"), reason = "to build a SummarizedExperiment")
+  wide <- lfqdata$data_wide(as.matrix = TRUE)
+  ann <- data.frame(wide$annotation)
+  rownames(ann) <- wide$annotation[[lfqdata$sample_name()]]
+  assays <- S4Vectors::SimpleList(LFQ = wide$data)
+  if ("nr_children" %in% lfqdata$get_config()$value_vars()) {
+    nr_children <- lfqdata$data_wide(as.matrix = TRUE, value = "nr_children")
+    assays[["nr_children"]] <- nr_children$data
   }
+  SummarizedExperiment::SummarizedExperiment(
+    assays,
+    colData = ann,
+    rowData = wide$rowdata
+  )
 }

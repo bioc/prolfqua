@@ -371,3 +371,42 @@ test_that("ContrastsTable$new stores a passed ContrastConfiguration", {
     class = "prolfqua_error_bad_argument"
   )
 })
+
+test_that("a contrast naming a group without samples is a typed error", {
+  lfq <- make_protein_lfqdata()$lfqdata
+  lfq$set_data(dplyr::filter(lfq$data_long(), .data$group_ != "A"))
+  expect_error(
+    prolfqua::ContrastsLMFacade$new(lfq, MODELSTR, c(AvsCtrl = "group_A - group_Ctrl")),
+    regexp = "group_A",
+    class = "prolfqua_error_bad_argument"
+  )
+  expect_error(
+    prolfqua::build_contrast_analysis(lfq, MODELSTR, c(AvsCtrl = "group_A - group_Ctrl"), method = "limma"),
+    class = "prolfqua_error_bad_argument"
+  )
+  # contrasts between groups with data still work
+  fa <- prolfqua::ContrastsLMFacade$new(lfq, MODELSTR, c(BvsCtrl = "group_B - group_Ctrl"))
+  expect_gt(nrow(fa$get_contrasts()), 0)
+})
+
+test_that("the firth facade keeps a protein key not named protein_Id", {
+  istar <- prolfqua::sim_lfq_data_protein_config(Nprot = 20, weight_missing = 0.5, seed = 42)
+  data <- dplyr::rename(istar$data, prot = "protein_Id")
+  config <- istar$config$clone(deep = TRUE)
+  names(config$hierarchy) <- "prot"
+  lfq <- prolfqua::LFQData$new(data, config)
+  fa <- prolfqua::ContrastsFirthFacade$new(lfq, MODELSTR, CONTRASTS)
+  expect_equal(fa$contrast$subject_id, "prot")
+  res <- fa$get_contrasts()
+  expect_true("prot" %in% colnames(res))
+  expect_false("protein_Id" %in% colnames(res))
+})
+
+test_that(".compute_missing keys missing pairs by the configured contrast column", {
+  lfq <- make_protein_lfqdata()$lfqdata
+  proteins <- unique(lfq$data_long()$protein_Id)
+  result <- data.frame(protein_Id = proteins[-1], Bait = "AvsCtrl")
+  missing <- prolfqua:::.compute_missing(lfq, "AvsCtrl", result, contrast_col = "Bait")
+  expect_equal(colnames(missing), c("protein_Id", "Bait"))
+  expect_equal(missing$protein_Id, proteins[1])
+})

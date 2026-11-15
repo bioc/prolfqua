@@ -286,3 +286,62 @@ test_that("get_Aggregator offers limpa", {
   expect_s3_class(lfq_log2$get_Aggregator("limpa"), "AggregateLimpa")
   expect_error(lfq_log2$get_Aggregator("nope"), class = "prolfqua_error_bad_argument")
 })
+
+test_that("LFQDataToSummarizedExperiment returns a SummarizedExperiment", {
+  skip_if_not_installed("SummarizedExperiment")
+  se <- LFQDataToSummarizedExperiment(lfqdata)
+  expect_s4_class(se, "SummarizedExperiment")
+  expect_equal(ncol(se), nrow(lfqdata$data_wide()$annotation))
+})
+
+test_that("lfqdata_from_wide inverts tidy_to_wide_config", {
+  istar <- sim_lfq_data_peptide_config(Nprot = 10)
+  lfq <- LFQData$new(istar$data, istar$config)
+  wide <- tidy_to_wide_config(lfq, as.matrix = TRUE)
+  nr <- tidy_to_wide_config(lfq, as.matrix = TRUE, value = lfq$nr_children_col())
+  values <- stats::setNames(list(wide$data, nr$data), c(lfq$response(), lfq$nr_children_col()))
+  back <- lfqdata_from_wide(values, wide$rowdata, wide$annotation, lfq$get_config())
+  expect_s3_class(back, "LFQData")
+
+  keys <- c(lfq$hierarchy_keys(), lfq$sample_name())
+  cols <- c(keys, lfq$isotope_label(), lfq$file_name(), lfq$factor_keys(), lfq$response(), lfq$nr_children_col())
+  tidy <- function(x) {
+    x <- dplyr::select(x$data_long(), dplyr::all_of(cols))
+    as.data.frame(dplyr::arrange(x, dplyr::across(dplyr::all_of(keys))))
+  }
+  expect_equal(tidy(back), tidy(lfq))
+
+  single <- lfqdata_from_wide(wide$data, wide$rowdata, wide$annotation, lfq$get_config())
+  expect_equal(single$response(), lfq$response())
+
+  expect_error(
+    lfqdata_from_wide(wide$data, wide$rowdata[-1, ], wide$annotation, lfq$get_config()),
+    class = "prolfqua_error_bad_argument"
+  )
+  expect_error(
+    lfqdata_from_wide(wide$data, wide$rowdata, wide$annotation[-1, ], lfq$get_config()),
+    class = "prolfqua_error_bad_argument"
+  )
+  expect_error(
+    lfqdata_from_wide(wide$data, wide$rowdata[, "protein_Id", drop = FALSE], wide$annotation, lfq$get_config()),
+    class = "prolfqua_error_missing_column"
+  )
+})
+
+test_that("intensity_array can mark a back-transform as untransformed", {
+  logged <- lfqdata$get_Transformer()$intensity_array(log)$lfq
+  expect_true(logged$is_transformed())
+  back <- logged$get_Transformer()$intensity_array(exp, force = TRUE, transformed = FALSE)$lfq
+  expect_false(back$is_transformed())
+  still <- logged$get_Transformer()$intensity_array(exp, force = TRUE)$lfq
+  expect_true(still$is_transformed())
+})
+
+test_that("is_aggregatable tells whether there is a level below the modelled one", {
+  expect_true(lfqdata$is_aggregatable())
+  prot <- sim_lfq_data_protein_config()
+  expect_false(LFQData$new(prot$data, prot$config)$is_aggregatable())
+  depth2 <- lfqdata$get_copy()
+  depth2$set_config_value("hierarchy_depth", 2)
+  expect_false(depth2$is_aggregatable())
+})

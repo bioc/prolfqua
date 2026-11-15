@@ -54,7 +54,8 @@ Other LFQData:
 \code{\link{LFQData}},
 \code{\link{LFQDataStats}},
 \code{\link{LFQDataSummariser}},
-\code{\link[=LFQDataToSummarizedExperiment]{LFQDataToSummarizedExperiment()}}
+\code{\link[=LFQDataToSummarizedExperiment]{LFQDataToSummarizedExperiment()}},
+\code{\link[=lfqdata_from_wide]{lfqdata_from_wide()}}
 }
 \concept{LFQData}
 \section{Public fields}{
@@ -434,6 +435,9 @@ display.}
       \item{\code{height}}{fig height}
     }
     \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    path the file was written to (invisible)
   }
 }
 

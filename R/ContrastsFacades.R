@@ -28,18 +28,48 @@
   }
 }
 
+# Every group a contrast names (a factor key followed by a level, e.g. group_A)
+# must have samples with a measured response.
+.assert_contrast_groups <- function(lfqdata, contrasts) {
+  factor_keys <- lfqdata$factor_keys()
+  data <- lfqdata$data_long()
+  data <- data[!is.na(data[[lfqdata$response()]]), , drop = FALSE]
+  with_data <- unlist(lapply(
+    intersect(factor_keys, colnames(data)),
+    function(key) paste0(key, unique(data[[key]]))
+  ))
+  for (i in seq_along(contrasts)) {
+    tokens <- unique(unlist(strsplit(all.vars(str2lang(contrasts[[i]])), ":", fixed = TRUE)))
+    groups <- tokens[vapply(tokens, function(token) any(startsWith(token, factor_keys)), logical(1))]
+    without_data <- setdiff(groups, with_data)
+    if (length(without_data) > 0) {
+      contrast_name <- names(contrasts)[i] %||% paste0("contrast_", i)
+      abort_bad_argument(
+        "contrasts",
+        sprintf(
+          "name only groups with samples; contrast `%s` (%s) names %s",
+          contrast_name,
+          contrasts[[i]],
+          paste(without_data, collapse = ", ")
+        ),
+        not = paste("groups with samples:", paste(with_data, collapse = ", "))
+      )
+    }
+  }
+}
+
 # Compute protein × contrast pairs present in input but absent from output.
-# Returns a data.frame with hierarchy columns + contrast, or 0 rows if nothing missing.
-.compute_missing <- function(lfqdata, contrast_names, contrast_result) {
+# Returns a data.frame with hierarchy columns + `contrast_col`, or 0 rows if nothing missing.
+.compute_missing <- function(lfqdata, contrast_names, contrast_result, contrast_col = "contrast") {
   subject_id <- lfqdata$subject_id()
   all_subjects <- lfqdata$data_long() |>
     dplyr::select(dplyr::all_of(subject_id)) |>
     dplyr::distinct()
-  expected <- tidyr::crossing(all_subjects, contrast = contrast_names)
+  expected <- tidyr::crossing(all_subjects, !!contrast_col := contrast_names)
   estimated <- contrast_result |>
-    dplyr::select(dplyr::all_of(c(subject_id, "contrast"))) |>
+    dplyr::select(dplyr::all_of(c(subject_id, contrast_col))) |>
     dplyr::distinct()
-  dplyr::anti_join(expected, estimated, by = c(subject_id, "contrast"))
+  dplyr::anti_join(expected, estimated, by = c(subject_id, contrast_col))
 }
 
 # Stamp the selected facade key as the row's model identity. `modelName` is the
