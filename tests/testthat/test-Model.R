@@ -107,8 +107,16 @@ test_that("Model (lm strategy with weights)", {
   )
 })
 
-test_that("ModelFirth", {
+test_that("build_model_logistf requires aggregated input", {
   istar <- sim_lfq_data_peptide_config(Nprot = 10, with_missing = TRUE, weight_missing = 0.5, seed = 3)
+  lfq <- LFQData$new(istar$data, istar$config)
+  lfq$set_data(encode_bin_resp(lfq))
+  lfq$set_config_value("bin_resp", "bin_resp")
+  expect_error(build_model_logistf(lfq, "bin_resp ~ group_"), "requires aggregated LFQData")
+})
+
+test_that("ModelFirth", {
+  istar <- sim_lfq_data_protein_config(Nprot = 10, with_missing = TRUE, weight_missing = 0.5, seed = 3)
   lfq <- LFQData$new(istar$data, istar$config)
   lfq$set_data(encode_bin_resp(lfq))
   lfq$set_config_value("bin_resp", "bin_resp")
@@ -118,6 +126,7 @@ test_that("ModelFirth", {
   coefs <- mod$get_coefficients()
   expect_s3_class(coefs, "data.frame")
   expect_true("Estimate" %in% colnames(coefs))
+  expect_equal(nrow(coefs), 30)
 
   ch <- mod$coef_histogram()
   expect_type(ch, "list")
@@ -142,16 +151,10 @@ test_that("StrategyLogistf avoids coefficient-wise profile likelihood fits", {
   expect_setequal(fit$method.ci, "Wald")
 })
 
-test_that("build_model_glm_protein and build_model_glm_peptide return ModelFirth", {
+test_that("build_model_glm_protein returns ModelFirth", {
   prot <- sim_lfq_data_protein_config(Nprot = 10, with_missing = TRUE, weight_missing = 0.5, seed = 7)
   prot_lfq <- LFQData$new(prot$data, prot$config)
   prot_mod <- build_model_glm_protein(prot_lfq, "~ group_")
   expect_true(inherits(prot_mod, "ModelFirth"))
   expect_s3_class(prot_mod$get_coefficients(), "data.frame")
-
-  pep <- sim_lfq_data_peptide_config(Nprot = 10, with_missing = TRUE, weight_missing = 0.5, seed = 7)
-  pep_lfq <- LFQData$new(pep$data, pep$config)
-  pep_mod <- build_model_glm_peptide(pep_lfq, "~ group_")
-  expect_true(inherits(pep_mod, "ModelFirth"))
-  expect_s3_class(pep_mod$get_coefficients(), "data.frame")
 })

@@ -18,15 +18,7 @@ ctr <- ContrastsFirth$new(modi,contrasts)
 ctr$get_contrast_sides()
 ctr$get_linfct()
 ctr$get_contrasts()
-
-mod3 <- sim_build_models_logistf(model = "parallel3", weight_missing = 1, peptide=TRUE)
-
-ctrpep <- ContrastsFirth$new(mod3,contrasts)
-ctrpep$get_contrast_sides()
-
-ctrpep$get_linfct()
-ctrpep$get_contrasts()
-pl <- ctrpep$get_Plotter()
+pl <- ctr$get_Plotter()
 
 }
 \seealso{
@@ -37,7 +29,6 @@ Other modelling:
 \code{\link{ContrastsDEqMSVoomFacade}},
 \code{\link{ContrastsFacadeBase}},
 \code{\link{ContrastsFirthFacade}},
-\code{\link{ContrastsFirthNestedFacade}},
 \code{\link{ContrastsHurdleFacade}},
 \code{\link{ContrastsHurdleNestedFacade}},
 \code{\link{ContrastsLMFacade}},
@@ -73,7 +64,6 @@ Other modelling:
 \code{\link{StrategyRfit}},
 \code{\link[=build_contrast_analysis]{build_contrast_analysis()}},
 \code{\link[=build_model]{build_model()}},
-\code{\link[=build_model_glm_peptide]{build_model_glm_peptide()}},
 \code{\link[=build_model_glm_protein]{build_model_glm_protein()}},
 \code{\link[=build_model_impute]{build_model_impute()}},
 \code{\link[=build_model_limma]{build_model_limma()}},
@@ -221,8 +211,8 @@ create Contrast
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    a list with the linfct-annotated model containers
-  (\code{models1} / \code{models2}); the shared input model is left
+    the linfct-annotated copy of the model container
+  (\code{model_df}, \code{strategy}); the shared input model is left
   untouched.
   }
 }

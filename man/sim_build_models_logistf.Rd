@@ -8,8 +8,7 @@ sim_build_models_logistf(
   model = c("parallel2", "parallel3", "factors", "interaction"),
   Nprot = 10,
   with_missing = TRUE,
-  weight_missing = 1,
-  peptide = FALSE
+  weight_missing = 1
 )
 }
 \description{
@@ -22,9 +21,6 @@ mod2 <- sim_build_models_logistf(model = "parallel2", weight_missing = 1)
 mod2$model_df$linear_model[[1]]
 mod3 <- sim_build_models_logistf(model = "parallel3", weight_missing = 1)
 modf <- sim_build_models_logistf(model = "factors", weight_missing = 1)
-
-mod3 <- sim_build_models_logistf(model = "parallel3", weight_missing = 1, peptide=TRUE)
-modf <- sim_build_models_logistf(model = "factors", weight_missing = 1, peptide=TRUE)
 }
 \seealso{
 Other modelling:
@@ -35,7 +31,6 @@ Other modelling:
 \code{\link{ContrastsFacadeBase}},
 \code{\link{ContrastsFirth}},
 \code{\link{ContrastsFirthFacade}},
-\code{\link{ContrastsFirthNestedFacade}},
 \code{\link{ContrastsHurdleFacade}},
 \code{\link{ContrastsHurdleNestedFacade}},
 \code{\link{ContrastsLMFacade}},
@@ -71,7 +66,6 @@ Other modelling:
 \code{\link{StrategyRfit}},
 \code{\link[=build_contrast_analysis]{build_contrast_analysis()}},
 \code{\link[=build_model]{build_model()}},
-\code{\link[=build_model_glm_peptide]{build_model_glm_peptide()}},
 \code{\link[=build_model_glm_protein]{build_model_glm_protein()}},
 \code{\link[=build_model_impute]{build_model_impute()}},
 \code{\link[=build_model_limma]{build_model_limma()}},
