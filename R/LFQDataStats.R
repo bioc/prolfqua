@@ -6,6 +6,7 @@
 #'
 #' @export
 #' @family LFQData
+#' @md
 #' @examples
 #'
 #' # study variance of not normalized data
@@ -25,6 +26,9 @@
 #'   if(!x$lfq$is_transformed()){
 #'     stopifnot(is.null(x$power_t_test()))
 #'     stopifnot(is.null(x$power_t_test_quantiles()))
+#'     stopifnot(is.null(x$power_fdr_pilot(delta_mean = 0.1)))
+#'   } else {
+#'     stopifnot(is.list(x$power_fdr_pilot(delta_mean = 0.1, max_n = 20)))
 #'   }
 #' }
 #' bb <- prolfqua::sim_lfq_data_peptide_config()
@@ -89,10 +93,10 @@ LFQDataStats <- R6::R6Class(
     initialize = function(lfqdata, stats = c("everything", "interaction", "all")) {
       stats <- match.arg(stats)
       self$lfq <- lfqdata$clone(deep = TRUE)
-      self$stat <- if (!self$lfq$is_transformed()) {
-        "CV"
-      } else {
+      self$stat <- if (self$lfq$is_transformed()) {
         "sd"
+      } else {
+        "CV"
       }
 
       tb <- table_factors_size(
@@ -135,7 +139,7 @@ LFQDataStats <- R6::R6Class(
         self$statsdf,
         id_cols = self$lfq$hierarchy_keys(),
         names_from = self$lfq$relevant_factor_keys(),
-        values_from = tidyselect::any_of(
+        values_from = dplyr::any_of(
           c("nrReplicates", "nrMeasured", "sd", "var", "meanAbundance", "medianAbundance", "CV")
         )
       )
@@ -213,7 +217,7 @@ LFQDataStats <- R6::R6Class(
       sig.level = 0.05
     ) {
       if (!self$lfq$is_transformed()) {
-        warning("data is not transformed - aborting")
+        warning("power_t_test_quantiles requires transformed data; aborting.")
         return()
       }
       res <- self$stats_quantiles(probs)
@@ -231,7 +235,7 @@ LFQDataStats <- R6::R6Class(
       sig.level = 0.05
     ) {
       if (!self$lfq$is_transformed()) {
-        warning("data is not transformed - aborting")
+        warning("power_t_test requires transformed data; aborting.")
         return()
       }
 
@@ -243,6 +247,39 @@ LFQDataStats <- R6::R6Class(
         min.n = 1.5
       )
       return(res)
+    },
+    #' @description
+    #' Plan balanced two-group sample size from pooled within-group pilot
+    #' variances; see [power_fdr_prior_n()] for assumptions and returned values.
+    #' Grouping and feature identities follow the current LFQData configuration,
+    #' regardless of the `stats` mode used to construct this decorator.
+    #' Untransformed data emit a warning and return `NULL`.
+    #' @param delta_mean planned mean difference among non-null features, on the transformed response scale
+    #' @param delta_se standard deviation of true non-null differences, not an estimated mean's standard error
+    #' @param fdr target false discovery rate
+    #' @param power target average power among non-null features
+    #' @param pi0 assumed proportion of truly null features
+    #' @param max_n largest sample count per group to consider
+    #' @return The list returned by [power_fdr_prior_n()].
+    power_fdr_pilot = function(delta_mean, delta_se = 0, fdr = 0.05, power = 0.8, pi0 = 0.95, max_n = 100) {
+      if (!self$lfq$is_transformed()) {
+        warning("power_fdr_pilot requires transformed data; aborting.")
+        return(NULL)
+      }
+      pooled <- poolvar(summarize_stats(self$lfq), self$lfq$get_config())
+      if (!any(is.finite(pooled$df) & pooled$df > 0)) {
+        abort_bad_argument("lfqdata", "have within-group replication; power_fdr_pilot needs replicates")
+      }
+      power_fdr_prior_n(
+        pooled$var,
+        pooled$df,
+        delta_mean = delta_mean,
+        delta_se = delta_se,
+        fdr = fdr,
+        power = power,
+        pi0 = pi0,
+        max_n = max_n
+      )
     }
   )
 )

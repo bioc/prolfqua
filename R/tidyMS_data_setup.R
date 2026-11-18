@@ -1,3 +1,7 @@
+#' Require a configured and present sample-file column
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .validate_setup_file_name <- function(data, configuration) {
   if (is.null(configuration$file_name)) {
     abort_invalid_config("`file_name` column is not specified in the AnalysisConfiguration.")
@@ -7,6 +11,10 @@
   }
 }
 
+#' Combine configured source columns into hierarchy identifiers
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .setup_hierarchy_columns <- function(data, configuration) {
   for (i in seq_along(configuration$hierarchy)) {
     data <- tidyr::unite(
@@ -26,6 +34,13 @@
   )
 }
 
+#' Construct categorical factor columns from their configured sources
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
+#' @srrstats {G2.4c} Configured factor columns are explicitly converted with as.character.
+#' @srrstats {G2.4e} Factor labels are explicitly converted with as.character instead of using integer codes.
+#' @srrstats {G2.5} Setup documents and enforces character labels for both ordered and unordered predictor factors.
 .setup_factor_columns <- function(data, configuration) {
   if (length(configuration$factors) == 0) {
     abort_invalid_config(
@@ -58,18 +73,28 @@
   data
 }
 
+#' Create sample names from file names when absent
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .setup_sample_name <- function(data, configuration) {
   sample_name <- configuration$sample_name
   if (!sample_name %in% names(data)) {
-    message("creating sampleName from file_name column")
+    inform_prolfqua("creating sampleName from file_name column")
     data[[sample_name]] <- tools::file_path_sans_ext(basename(data[[configuration$file_name]]))
     return(data)
   }
 
-  message("column sampleName already exists, using :", sample_name)
   data
 }
 
+#' Insert a missing configured column and report the default
+#' @param data long-format measurement data frame
+#' @param column name of the column to insert
+#' @param value default value assigned to the new column
+#' @param text diagnostic message passed to notify
+#' @param notify function reporting an inserted column
+#' @noRd
 .add_setup_default_column <- function(data, column, value, text, notify) {
   if (column %in% colnames(data)) {
     return(data)
@@ -79,22 +104,26 @@
   data
 }
 
-# isotopeLabel and qValue are optional and only reported. A missing nr_children
-# warns: the default of 1 changes the fitting weights of aggregated data.
+#' isotopeLabel and qValue are optional and only reported. A missing nr_children
+#'
+#' warns: the default of 1 changes the fitting weights of aggregated data.
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .add_setup_default_columns <- function(data, configuration) {
   data <- .add_setup_default_column(
     data,
     configuration$isotope_label,
     "light",
     "no isotopeLabel column specified in the data, adding column isotopeLabel automatically and setting to 'light'.",
-    message
+    inform_prolfqua
   )
   data <- .add_setup_default_column(
     data,
     configuration$ident_q_value,
     0,
     "no qValue column specified in the data. Creating column qValue and setting qValues to 0.",
-    message
+    inform_prolfqua
   )
   .add_setup_default_column(
     data,
@@ -105,6 +134,10 @@
   )
 }
 
+#' Count rows per hierarchy identifier and sample
+#' @param data long-format measurement data frame
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .setup_duplicate_counts <- function(data, configuration) {
   data |>
     group_by(
@@ -117,12 +150,16 @@
     summarize(n = n())
 }
 
+#' Describe duplicate measurements and their offending keys
+#' @param offending duplicate measurement keys
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @noRd
 .setup_duplicate_message <- function(offending, configuration) {
   paste0(
     "setup_analysis: there is more than ONE observation for ",
     nrow(offending),
     " ",
-    paste(configuration$hierarchy_keys(), collapse = ", "),
+    toString(configuration$hierarchy_keys()),
     " / sample (column '",
     configuration$sample_name,
     "', file '",
@@ -136,6 +173,11 @@
   )
 }
 
+#' Reject duplicate measurements or return their diagnostic counts
+#' @param counts counts of measurements per subject and sample
+#' @param configuration AnalysisConfiguration defining the column roles
+#' @param debug return diagnostic duplicate counts instead of aborting
+#' @noRd
 .handle_setup_duplicates <- function(counts, configuration, debug) {
   offending <- dplyr::filter(dplyr::ungroup(counts), .data[["n"]] > 1)
   if (nrow(offending) == 0) {
@@ -157,7 +199,17 @@
 #'
 #' Extracts columns relevant for a configuration from a data frame
 #' and create new columns e.g. sampleName column etc.
-#' @param data data.frame
+#' @details Configured factor source columns are converted to character
+#'   categorical labels, including numeric and ordered factors. Ordered levels
+#'   and their ordering are not retained. Names of \code{configuration$factors}
+#'   become the output predictor column names. Configured hierarchy columns are
+#'   combined into identifiers. Unconfigured columns and their attributes are
+#'   discarded; the returned table retains only configured analysis columns.
+#'   A missing sample name is derived from the file name. Missing isotope labels,
+#'   identification q-values and child counts receive the documented setup
+#'   defaults; adding child counts of one emits a warning.
+#' @param data a data.frame with the configured source hierarchy, factor,
+#'   file-name and numeric response columns
 #' @param configuration AnalysisConfiguration
 #' @param debug if FALSE (default) and any hierarchy-key/sample combination has
 #'   more than one observation, stop with an informative error. If TRUE, warn
@@ -192,9 +244,26 @@
 #'
 #' adata <- setup_analysis(data, config)
 #'
+#' @srrstatsTODO {G2.4} Setup explicitly converts categorical predictors; specialized input conversion is not fully
+#'   audited.
+#' @srrstatsTODO {G2.4d} Design matrices factor categorical labels as documented; limit: setup discards supplied level
+#'   order.
+#' @srrstatsTODO {G2.9} Setup reports inserted defaults; limit: coercion and removal of unconfigured columns have no
+#'   diagnostics.
+#' @srrstats {RE1.2} Setup help documents categorical predictors, numeric coercion and loss of ordered-factor
+#'   semantics.
+#' @srrstats {RE1.3a} Setup help states retained columns, discarded attributes, categorical conversion and inserted
+#'   defaults.
+#' @srrstatsTODO {RE2.0} Setup documents automatic conversions/defaults; those operations lack individual controls.
 setup_analysis <- function(data, configuration, debug = FALSE) {
-  configuration <- configuration$clone(deep = TRUE)
+  .assert_response_data(data, configuration)
   .validate_setup_file_name(data, configuration)
+  required <- unique(c(unlist(configuration$hierarchy), unlist(configuration$factors)))
+  missing <- setdiff(required, names(data))
+  if (length(missing) > 0) {
+    abort_missing_columns(missing)
+  }
+  configuration <- configuration$clone(deep = TRUE)
   data <- .setup_hierarchy_columns(data, configuration)
   data <- .setup_factor_columns(data, configuration)
   data <- .setup_sample_name(data, configuration)
@@ -220,8 +289,6 @@ setup_analysis <- function(data, configuration, debug = FALSE) {
     configuration$isotope_label,
     configuration$hierarchy_keys()
   )
-  message("completing cases done")
-  message("setup done")
   return(data)
 }
 
@@ -259,9 +326,15 @@ separate_hierarchy <- function(data, config) {
   return(data)
 }
 
-# Internal implementation for complete_cases (used by setup_analysis before LFQData exists)
+#' Internal implementation for complete_cases (used by setup_analysis before LFQData exists)
+#' @param pdata long-format measurement table
+#' @param file_name column identifying the input measurement files
+#' @param sample_name column identifying samples
+#' @param factor_keys configured explanatory-variable columns
+#' @param isotope_label column identifying isotope labels
+#' @param hierarchy_keys hierarchy identifier columns
+#' @noRd
 .complete_cases_impl <- function(pdata, file_name, sample_name, factor_keys, isotope_label, hierarchy_keys) {
-  message("completing cases")
   fkeys <- unique(c(file_name, sample_name, factor_keys))
   hkeys <- c(isotope_label, hierarchy_keys)
   res <- tidyr::complete(
@@ -313,8 +386,6 @@ complete_cases <- function(lfqdata) {
 #' subset <- sample_subset(2, bb$data, bb$config$hierarchy_keys_depth())
 #' length(unique(subset[[bb$config$hierarchy_keys_depth()[1]]]))
 sample_subset <- function(size, pdata, hierarchy_keys_depth) {
-  keys <- paste(hierarchy_keys_depth, collapse = ",")
-  message("Sampling ", size, " ", keys)
   hkdf <- pdata |> select(all_of(hierarchy_keys_depth)) |> distinct() |> sample_n(size = size)
   sdata <- inner_join(hkdf, pdata, by = hierarchy_keys_depth)
   return(sdata)

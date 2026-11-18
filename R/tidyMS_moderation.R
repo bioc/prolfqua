@@ -16,6 +16,11 @@
 #' res <- moderated_p_limma(contrast_df)
 #' "moderated.p.value" %in% colnames(res)
 #' @param variance_floor optional positive lower bound for posterior variances
+#' @srrstats {G5.4} Tests compare moderation to squeezeVar, detection to glm/logistf and Hurdle to Fisher combination.
+#'   test-power_fdr.R compares FDR planning with power.t.test, analytic normal mixing and ssize.fdr.
+#' @srrstatsTODO {G5.4b} test-reference-implementations.R compares lm, limma, lmer, rlm, rfit and deqms with
+#'   stats::lm, limma, lmerTest, MASS, Rfit and stored DEqMS output; limit: ropeca_nested is not compared with PECA
+#'   (not installed).
 moderated_p_limma <- function(
   contrast_df,
   df = "df",
@@ -26,7 +31,7 @@ moderated_p_limma <- function(
 ) {
   valid_floor <- is.numeric(variance_floor) && length(variance_floor) == 1L && is.finite(variance_floor)
   if (!is.null(variance_floor) && !(valid_floor && variance_floor > 0)) {
-    stop("`variance_floor` must be NULL or one positive number.", call. = FALSE)
+    abort_bad_argument("variance_floor", "be NULL or one positive number")
   }
 
   # Empirical-Bayes variance moderation via limma. Since limma 3.x, squeezeVar()
@@ -75,7 +80,14 @@ moderated_p_limma <- function(
 #' @keywords internal
 #' @noRd
 .finalize_moderated_columns <- function(result, p.adjust, all = FALSE) {
-  if (!all) {
+  if (all) {
+    result <- p.adjust(
+      result,
+      column = "moderated.p.value",
+      group_by_col = "contrast",
+      newname = "FDR.moderated"
+    )
+  } else {
     result <- result |>
       dplyr::select(
         -c(
@@ -107,13 +119,6 @@ moderated_p_limma <- function(
       column = "p.value",
       group_by_col = "contrast",
       newname = "FDR"
-    )
-  } else {
-    result <- p.adjust(
-      result,
-      column = "moderated.p.value",
-      group_by_col = "contrast",
-      newname = "FDR.moderated"
     )
   }
   result

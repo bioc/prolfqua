@@ -24,6 +24,8 @@
 #' @examples
 #' facade <- ContrastsFacadeBase$new()
 #' inherits(facade, "ContrastsFacadeBase")
+#' @srrstats {RE1.3} Facade results retain subject identifiers, and get_missing reports absent subject/contrast pairs.
+#' @srrstats {RE4.8} Facades copy LFQData; matrix fits retain E, weights, observed masks and sample annotation.
 ContrastsFacadeBase <- R6::R6Class(
   "ContrastsFacadeBase",
   inherit = ContrastsInterface,
@@ -32,7 +34,7 @@ ContrastsFacadeBase <- R6::R6Class(
     model = NULL,
     #' @field contrast inner contrast object the facade delegates to
     contrast = NULL,
-    #' @field .lfqdata stored reference to the input LFQData (used by get_missing)
+    #' @field .lfqdata snapshot of the input LFQData (used by get_missing)
     .lfqdata = NULL,
     #' @field .contrast_names names of the requested contrasts
     .contrast_names = NULL,
@@ -78,6 +80,14 @@ ContrastsFacadeBase <- R6::R6Class(
     # registry entry of `key` (`needs`), store the input and the contrast names,
     # record the facade key, and return the full model formula string.
     .setup = function(lfqdata, contrasts, key, modelstr) {
+      if (!inherits(lfqdata, "LFQData")) {
+        abort_bad_argument("lfqdata", "be an LFQData object")
+      }
+      .assert_named_contrasts(contrasts)
+      formula <- .as_model_formula(modelstr)
+      if (!is.character(modelstr) || length(formula) != 2) {
+        abort_bad_argument("modelstr", "be one right-hand-side formula string, e.g. `~ group_`")
+      }
       entry <- lookup_facade(key)
       if (identical(entry$needs, "nested")) {
         .assert_nested_facade_input(lfqdata, entry$class)
@@ -85,7 +95,7 @@ ContrastsFacadeBase <- R6::R6Class(
         .assert_aggregated_facade_input(lfqdata, entry$class)
       }
       .assert_contrast_groups(lfqdata, contrasts)
-      self$.lfqdata <- lfqdata
+      self$.lfqdata <- lfqdata$get_copy()
       self$.contrast_names <- names(contrasts)
       self$facade_name <- key
       paste(lfqdata$response(), modelstr)

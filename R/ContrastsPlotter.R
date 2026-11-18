@@ -5,7 +5,7 @@
 #' @export
 #' @family modelling
 #' @family plotting
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_peptide_config(Nprot = 20)
 #' model_name <- "Model"
@@ -50,6 +50,7 @@
 #' stopifnot("ggplot" %in% class(res$FDR$plot))
 #' stopifnot("ggplot" %in%  class(cp$histogram_diff()))
 #'
+#' @srrstatsTODO {G4.0} Plot writers add PDF suffixes; limit: existing suffixes can be appended twice.
 ContrastsPlotter <- R6::R6Class(
   "ContrastsPlotter",
   public = list(
@@ -197,6 +198,7 @@ ContrastsPlotter <- R6::R6Class(
       scales = c("fixed", "free", "free_x", "free_y"),
       min_score = NULL
     ) {
+      rlang::check_installed("plotly", reason = "for interactive plots.")
       private$.volcano(colour, legend, match.arg(scales), plotly = TRUE, min_score = min_score)
     },
     #' @description
@@ -227,6 +229,7 @@ ContrastsPlotter <- R6::R6Class(
     #' @param rank default FALSE, if TRUE then rank of avgAbd is used.
     #' @return list of ggplots
     ma_plotly = function(fc = self$fcthresh, colour = self$model_name, legend = TRUE, rank = FALSE) {
+      rlang::check_installed("plotly", reason = "for interactive plots.")
       fig <- private$.ma_fig(private$.contrast_df, fc, colour, legend, rank, plotly_mode = TRUE)
       if (!is.null(fig)) {
         fig <- fig |> plotly::ggplotly(tooltip = "subject_id")
@@ -264,7 +267,8 @@ ContrastsPlotter <- R6::R6Class(
         score_threshold <- self$volcano_spec[[i]]$thresh
         filt <- dplyr::filter(
           private$.contrast_df,
-          !is.na(!!sym(score_name)) & !!sym(score_name) < score_threshold
+          !is.na(!!sym(score_name)),
+          !!sym(score_name) < score_threshold
         )
         if (is.numeric(self$fcthresh)) {
           filt <- dplyr::filter(filt, abs(!!sym(self$diff)) > self$fcthresh)
@@ -313,7 +317,7 @@ ContrastsPlotter <- R6::R6Class(
         if (plotly) {
           contrasts2 <- contrasts2 |> plotly::highlight_key(~subject_id, group = self$group)
         }
-        p <- prolfqua:::.multigroup_volcano(
+        p <- .multigroup_volcano(
           contrasts2,
           effect = self$diff,
           significance = column,
@@ -385,8 +389,8 @@ ContrastsPlotter <- R6::R6Class(
           scale_colour_manual(values = .contrast_colour_values(colour)) +
           geom_point(alpha = 0.5) +
           facet_wrap(vars(!!sym(self$contrast))) +
-          geom_hline(yintercept = c(0), colour = 1) +
-          geom_vline(xintercept = c(0), colour = 1) +
+          geom_hline(yintercept = 0, colour = 1) +
+          geom_vline(xintercept = 0, colour = 1) +
           geom_hline(yintercept = ylims, colour = 2, linetype = "dashed")
 
         if (is.numeric(xlim)) {

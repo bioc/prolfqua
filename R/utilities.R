@@ -1,10 +1,37 @@
-# Internal error handler for tryCatch in model fitting and plotting
+#' Internal error handler for tryCatch in model fitting and plotting: the error
+#'
+#' becomes a warning of class prolfqua_fit_failed, and the failed fit its message.
+#' @param e condition raised by a failed fit
+#' @noRd
 .error_handler <- function(e) {
-  warning(conditionMessage(e), call. = FALSE)
+  rlang::warn(conditionMessage(e), class = "prolfqua_fit_failed")
   as.character(e)
 }
 
-# Internal helper for rendering ggplot/ComplexHeatmap objects to an open graphics device.
+#' Whether an optional (Suggests) package is installed; a function so tests can mock it.
+#' @param pkg optional package name
+#' @noRd
+.has_package <- function(pkg) {
+  requireNamespace(pkg, quietly = TRUE)
+}
+
+#' Close graphics device `which` and make the previously active device current
+#'
+#' again, as withr::local_pdf() does when its frame exits.
+#' @param which graphics device number
+#' @noRd
+.dev_close <- function(which) {
+  prev <- grDevices::dev.prev(which)
+  grDevices::dev.off(which)
+  if (prev != which) {
+    grDevices::dev.set(prev)
+  }
+  invisible(prev)
+}
+
+#' Internal helper for rendering ggplot/ComplexHeatmap objects to an open graphics device.
+#' @param x ggplot or ComplexHeatmap object to draw
+#' @noRd
 .render_plot_to_device <- function(x) {
   if (methods::is(x, "Heatmap") || methods::is(x, "HeatmapList")) {
     ComplexHeatmap::draw(x)
@@ -120,7 +147,7 @@ multigroup_volcano <- function(
     text = "label",
     scales = scales
   )
-  colname <- paste("-log10(", significance, ")", sep = "")
+  colname <- paste0("-log10(", significance, ")")
 
   if (!is.null(label)) {
     effect_values <- labeled_data[, effect]
@@ -144,6 +171,10 @@ multigroup_volcano <- function(
   return(p)
 }
 
+#' Bound significance scores away from zero before log transformation
+#' @param values numeric significance scores to bound away from zero
+#' @param min_score smallest displayed significance score
+#' @noRd
 .floor_significance_values <- function(values, min_score = NULL) {
   if (!is.null(min_score)) {
     return(pmax(values, min_score))
@@ -158,6 +189,9 @@ multigroup_volcano <- function(
   ifelse(values <= 0, zero_floor, values)
 }
 
+#' Choose colours for the contrast estimate types
+#' @param colour estimate-type colour specification
+#' @noRd
 .contrast_colour_values <- function(colour) {
   if (identical(colour, "estimate_type")) {
     return(c(observed = "black", lod_imputed = "green", missing_fallback = "blue"))
@@ -165,6 +199,17 @@ multigroup_volcano <- function(
   c("black", "green", "blue", "red")
 }
 
+#' Draw one volcano panel per contrast with shared score definitions
+#' @param data long-format measurement data frame
+#' @param effect effect-size column name
+#' @param significance significance-score column name
+#' @param contrast name of the column identifying contrast panels
+#' @param colour estimate-type colour specification
+#' @param xintercept effect-size reference lines
+#' @param yintercept significance reference lines
+#' @param text name of the optional tooltip column
+#' @param scales facet-axis scaling passed to ggplot2::facet_wrap
+#' @noRd
 .multigroup_volcano <- function(
   data,
   effect = "fc",
@@ -177,7 +222,7 @@ multigroup_volcano <- function(
 
   scales = "fixed"
 ) {
-  colname <- paste("-log10(", significance, ")", sep = "")
+  colname <- paste0("-log10(", significance, ")")
   p <- ggplot(
     data,
     aes(x = .data[[effect]], y = !!rlang::parse_expr(colname))
@@ -237,7 +282,7 @@ multigroup_volcano <- function(
 #'
 matrix_to_tibble <- function(x, preserve_row_names = "row.names", ...) {
   if (!(is.matrix(x) || is.data.frame(x))) {
-    stop("`x` is not a matrix or data.frame object.", call. = FALSE)
+    abort_bad_argument("x", "be a matrix or data.frame")
   }
   if (!is.null(preserve_row_names)) {
     row.names <- rownames(x)
@@ -268,12 +313,12 @@ matrix_to_tibble <- function(x, preserve_row_names = "row.names", ...) {
 #' panel_cor(1:3, 1:3)
 panel_cor <- function(x, y, digits = 2, ...) {
   usr <- par("usr")
-  on.exit(par(usr = usr))
+  on.exit(par(usr = usr), add = TRUE)
   par(usr = c(0, 1, 0, 1))
   # correlation coefficient
   r <- cor(x, y, use = "pairwise.complete.obs")
   txt <- format(c(r, 0.123456789), digits = digits)[1]
-  txt <- paste("r= ", txt, sep = "")
+  txt <- paste0("r= ", txt)
   text(0.5, 0.7, txt)
 
   txt <- format(c(r^2, 0.123456789), digits = digits)[1]
@@ -287,9 +332,9 @@ panel_cor <- function(x, y, digits = 2, ...) {
   # p-value calculation
   p <- cor.test(x, y)$p.value
   txt2 <- format(c(p, 0.123456789), digits = digits)[1]
-  txt2 <- paste("p= ", txt2, sep = "")
+  txt2 <- paste0("p= ", txt2)
   if (p < 0.01) {
-    txt2 <- paste("p= ", "<0.01", sep = "")
+    txt2 <- "p= <0.01"
   }
   text(0.5, 0.3, txt2)
 }
@@ -326,7 +371,7 @@ pairs_smooth <- function(data, legend = FALSE, ...) {
       )
       if (legend) {
         r_squared <- stats::cor(x, y, use = "pairwise.complete.obs")^2
-        graphics::legend("topleft", legend = paste("R^2=", round(r_squared, digits = 2), sep = ""), text.col = 3)
+        graphics::legend("topleft", legend = paste0("R^2=", round(r_squared, digits = 2)), text.col = 3)
       }
     },
     lower.panel = panel_cor,
@@ -352,6 +397,20 @@ table_facade <- function(df, caption, digits = getOption("digits"), kable = TRUE
 }
 
 
+#' Draw a volcano panel with effect and significance thresholds
+#' @param data long-format measurement data frame
+#' @param contrast label displayed as a plot annotation
+#' @param effect effect-size column name
+#' @param significance significance-score column name
+#' @param x_annot horizontal position of the contrast annotation
+#' @param y_annot significance value locating the annotation before the -log10 transform
+#' @param proteinID feature identifier column
+#' @param color colour column
+#' @param palette named mapping from groups to colours
+#' @param xintercept effect-size reference lines
+#' @param yintercept significance reference lines
+#' @param title_size plot title text size
+#' @noRd
 .volcano <- function(
   data,
   contrast = NULL,
@@ -433,7 +492,7 @@ table_facade <- function(df, caption, digits = getOption("digits"), kable = TRUE
 #' @param group crosstalk group name for linked brushing
 #' @return The requested plot, table, or transformed object.
 #' @export
-#' @examples
+#' @examplesIf requireNamespace("plotly", quietly = TRUE) && requireNamespace("crosstalk", quietly = TRUE)
 #'
 #' data <- data.frame(fc = c(-1,0,1,2,8), BFDR = c(0.01,1, 0.01, 0.005,0),
 #' condition = rep("A",5), Prey = LETTERS[1:5], modelName = c("A","A","B","A","A"))
@@ -458,6 +517,7 @@ volcano_plotly <- function(
   title_size = 25,
   group = "BB"
 ) {
+  rlang::check_installed(c("plotly", "crosstalk"), reason = "for volcano_plotly().")
   .data[[significance]] <- .floor_significance_values(.data[[significance]], minsignificance)
 
   xx <- .data |>
@@ -531,7 +591,7 @@ make_interaction_column <- function(data, columns, sep = ".") {
     paste0(x, levels(y))
   })
   intr <- purrr::map2_dfc(columns, intr, paste0)
-  intr <- purrr::map2_dfc(intr, newlev, forcats::fct_relevel)
+  intr <- purrr::map2_dfc(intr, newlev, function(x, lev) factor(x, levels = lev))
 
   colnames(intr) <- paste0("interaction_", columns)
   colname <- "interaction"
@@ -549,9 +609,13 @@ make_interaction_column <- function(data, columns, sep = ".") {
 .default_decoy_prefixes <- "^REV_|^rev_|^DECOY|^decoy_|^XXX_|^reverse_|^##"
 .default_contaminant_prefixes <- "^zz|^CON__|^CON_|^Cont_|^contam_"
 
-# defaults, unioned with an optional configured pattern. An empty / NULL /
-# no-op ("a^") pattern yields the defaults only -- never grepl("", x), which
-# would match every id (the exact failure mode behind WU347806).
+#' defaults, unioned with an optional configured pattern. An empty / NULL /
+#'
+#' no-op ("a^") pattern yields the defaults only -- never grepl("", x), which
+#' would match every id (the exact failure mode behind WU347806).
+#' @param pattern optional user-specified identifier pattern
+#' @param defaults built-in identifier patterns
+#' @noRd
 .effective_prefix_pattern <- function(pattern, defaults) {
   has_pat <- !is.null(pattern) &&
     length(pattern) == 1 &&

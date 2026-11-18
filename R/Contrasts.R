@@ -1,9 +1,14 @@
+#' Construct factor and interaction contrasts for one complete model
+#' @param model model or model specification used by the operation
+#' @param contrast named character vector of contrast expressions
+#' @param avg include average-abundance linear functions
+#' @noRd
 .linfct <- function(model, contrast, avg = TRUE) {
   linfct <- linfct_from_model(model, as_list = FALSE)
   linfct <- unique(linfct) # needed for single factor models
   if (avg) {
     namtmp <- paste0("avg_", names(contrast))
-    cntr_avg <- paste0("(", gsub(" - ", " + ", contrast), ")/2")
+    cntr_avg <- paste0("(", gsub(" - ", " + ", contrast, fixed = TRUE), ")/2")
     names(cntr_avg) <- namtmp
     contrast <- c(contrast, cntr_avg)
   }
@@ -11,6 +16,11 @@
   return(linfct_a)
 }
 
+#' Construct the contrasts estimable from one partial model
+#' @param model model or model specification used by the operation
+#' @param contrast named character vector of contrast expressions
+#' @param avg include average-abundance linear functions
+#' @noRd
 .linfct_partial_model <- function(model, contrast, avg = TRUE) {
   withCallingHandlers(
     .linfct(model, contrast = contrast, avg = avg),
@@ -18,8 +28,16 @@
   )
 }
 
-# One linfct per model. With `reuse_complete`, models with the maximal number of estimated coefficients share the
-# linfct of the complete model fit; all other models get their own from `linfct_fun`.
+#' One linfct per model. With `reuse_complete`, models with the maximal number of estimated coefficients share the
+#'
+#' linfct of the complete model fit; all other models get their own from `linfct_fun`.
+#' @param model_df table with one fitted model and diagnostics per subject
+#' @param contrasts named character vector of contrast expressions
+#' @param avg include average-abundance linear functions
+#' @param label progress label
+#' @param linfct_fun function constructing linear functions for one fit
+#' @param reuse_complete reuse a complete-model linear function for other complete fits
+#' @noRd
 .linfct_per_model <- function(model_df, contrasts, avg, label, linfct_fun = .linfct, reuse_complete = TRUE) {
   res <- vector(mode = "list", nrow(model_df))
   pb <- .make_progress(nrow(model_df), label = label)
@@ -38,8 +56,14 @@
   res
 }
 
-# Wald-test finish shared by Contrasts and ContrastsFirth: name the contrast columns, join the `avg_` rows back as
-# avgAbd, adjust p-values and keep the unmoderated standard error and df.
+#' Wald-test finish shared by Contrasts and ContrastsFirth: name the contrast columns, join the `avg_` rows back as
+#'
+#' avgAbd, adjust p-values and keep the unmoderated standard error and df.
+#' @param contrast_result computed contrast table
+#' @param contrasts named character vector of contrast expressions
+#' @param subject_id column names identifying the modelled subjects
+#' @param p.adjust p-value adjustment function
+#' @noRd
 .finalize_wald_contrasts <- function(contrast_result, contrasts, subject_id, p.adjust) {
   contrast_result <- dplyr::rename(ungroup(contrast_result), contrast = "lhs", diff = "estimate")
 
@@ -63,6 +87,10 @@
     )
 }
 
+#' Select standard Wald contrast columns or retain all diagnostics
+#' @param contrast_result computed contrast table
+#' @param all retain all diagnostic columns
+#' @noRd
 .select_wald_columns <- function(contrast_result, all) {
   if (all) {
     return(contrast_result)
@@ -80,7 +108,7 @@
 #' @return An R6 class generator.
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #'
 #' # Fitting mixed effects model to peptide data
 #' istar <- prolfqua::sim_lfq_data_peptide_config()
@@ -167,7 +195,11 @@ Contrasts <- R6::R6Class(
       global = FALSE,
       model_name = "WaldTest"
     ) {
-      self$models <- model$model_df |> dplyr::filter(has_model_fit == TRUE)
+      if (!inherits(model, "Model")) {
+        abort_bad_argument("model", "be a Model object")
+      }
+      .assert_named_contrasts(contrasts)
+      self$models <- model$model_df |> dplyr::filter(.data$has_model_fit)
       self$contrasts <- contrasts
       self$contrastfun <- model$model_strategy$contrast_fun
       self$model_name <- model_name
@@ -230,7 +262,7 @@ Contrasts <- R6::R6Class(
         self$contrast_result <- .stamp_model_identity(contrast_result, self$model_name, estimate_type)
       }
       res <- .select_wald_columns(self$contrast_result, all)
-      stopifnot(all(super$column_description()$column_name %in% colnames(res)))
+      .stop_if_missing_columns(res, super$column_description()$column_name, "return contrasts")
       return(res)
     }
   )

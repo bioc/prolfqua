@@ -184,7 +184,7 @@ annotation_add_contrasts <- function(
   levels_p <- sort(unique(df[[primary_col]]), decreasing = decreasing)
   levels_s <- sort(unique(df[[secondary_col]]), decreasing = decreasing)
 
-  df <- df |> tidyr::unite("Group", primary_col, secondary_col, sep = "_", remove = FALSE)
+  df <- df |> tidyr::unite("Group", dplyr::all_of(c(primary_col, secondary_col)), sep = "_", remove = FALSE)
   df_contrast <- generate_contrasts(levels_p, levels_s, interactions = interactions)
 
   if (nrow(df_contrast) < nrow(df)) {
@@ -196,7 +196,7 @@ annotation_add_contrasts <- function(
   }
   # Annotate and export
   annot <- dplyr::bind_cols(
-    df %>% dplyr::select(-dplyr::all_of(c(primary_col, secondary_col))),
+    df |> dplyr::select(-dplyr::all_of(c(primary_col, secondary_col))),
     df_contrast
   )
   name <- paste0("DEA_", prefix, "_", dataset_id, ".csv")

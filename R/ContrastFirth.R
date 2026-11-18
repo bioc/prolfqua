@@ -1,3 +1,6 @@
+#' Keep successful Firth fits with usable coefficients
+#' @param model_df table with one fitted model and diagnostics per subject
+#' @noRd
 .filter_fitted_firth_models <- function(model_df) {
   model_df |>
     dplyr::filter(
@@ -13,7 +16,7 @@
 #' @return An R6 class generator.
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("logistf", quietly = TRUE)
 #'
 #' modi <- sim_build_models_logistf(model = "parallel3", weight_missing = 1)
 #' contrasts <- c(Avs = "group_A - group_B", AvsCtrl = "group_A - group_Ctrl")
@@ -51,9 +54,7 @@ ContrastsFirth <- R6::R6Class(
       if (!inherits(model, "ModelFirth")) {
         abort_bad_argument("model", "be a ModelFirth", not = paste(class(model), collapse = "/"))
       }
-      if (!is.character(contrasts) || is.null(names(contrasts)) || !all(nzchar(names(contrasts)))) {
-        abort_bad_argument("contrasts", "be a named character vector")
-      }
+      .assert_named_contrasts(contrasts)
       self$models <- model
       self$contrasts <- contrasts
       self$model_name <- model_name
@@ -97,7 +98,7 @@ ContrastsFirth <- R6::R6Class(
         self$contrast_result <- .stamp_model_identity(contrast_result, self$model_name, "observed")
       }
       res <- .select_wald_columns(self$contrast_result, all)
-      stopifnot(all(super$column_description()$column_name %in% colnames(res)))
+      .stop_if_missing_columns(res, super$column_description()$column_name, "return contrasts")
       return(res)
     }
   )

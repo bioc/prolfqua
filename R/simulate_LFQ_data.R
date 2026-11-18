@@ -1,8 +1,12 @@
+#' Generate random identifier strings of a fixed length
+#' @param N number of identifiers to generate
+#' @param str_length length of each generated identifier
+#' @noRd
 .generate_random_string <- function(N, str_length) {
   random_string <- vector(mode = "character", length = N)
   digits <- 0:9
   for (i in seq_len(N)) {
-    random_string[i] <- paste0(sample(digits, str_length, replace = TRUE), collapse = "")
+    random_string[i] <- paste(sample(digits, str_length, replace = TRUE), collapse = "")
   }
   return(random_string)
 }
@@ -80,7 +84,7 @@ sim_lfq_data <- function(
 
   # transform into long format
   peptide_df2 <- peptide_df |>
-    tidyr::pivot_longer(cols = tidyselect::starts_with(c("mean", "N_")), names_to = "group", values_to = "mean")
+    tidyr::pivot_longer(cols = dplyr::starts_with(c("mean", "N_")), names_to = "group", values_to = "mean")
   peptide_df2 <- peptide_df2 |> tidyr::separate_wider_delim(group, delim = "_", names = c("what", "group"))
   peptide_df2 <- peptide_df2 |> tidyr::pivot_wider(names_from = "what", values_from = mean)
 
@@ -102,7 +106,7 @@ sim_lfq_data <- function(
 
   peptide_abundances <- x |>
     tidyr::pivot_longer(
-      tidyselect::starts_with("V"),
+      dplyr::starts_with("V"),
       names_to = "Replicate",
       values_to = "abundance"
     )
@@ -133,12 +137,21 @@ which_missing <- function(x, weight_missing = 0.2) {
   return(missing_values)
 }
 
-# Evaluates code with a fixed seed, or with the current RNG state when seed is NULL.
+#' Evaluates code with a fixed seed, or with the current RNG state when seed is NULL.
+#' @param seed random seed or NULL
+#' @param code expression evaluated with the selected random-number state
+#' @noRd
 .with_sim_seed <- function(seed, code) {
   if (is.null(seed)) code else withr::with_seed(seed, code)
 }
 
-# Shared tail of the sim_lfq_data_*_config() simulators: configuration of the simulated columns and setup_analysis().
+#' Shared tail of the sim_lfq_data_*_config() simulators: configuration of the simulated columns and setup_analysis().
+#' @param data long-format measurement data frame
+#' @param factors named list of explanatory-variable columns
+#' @param peptide whether the input contains peptide-level measurements
+#' @param nr_children column tracking measured child-feature counts
+#' @param factor_depth number of configured factors included in summaries and plots
+#' @noRd
 .sim_setup <- function(data, factors, peptide, nr_children = "nr_children", factor_depth = 1) {
   data$isotopeLabel <- "light"
   data$qValue <- 0
@@ -157,9 +170,9 @@ which_missing <- function(x, weight_missing = 0.2) {
 
 
 #' Simulate data, protein and peptide, with config
-#' @param Nprot number of proteins to simulate
+#' @param Nprot one positive whole number of proteins to simulate
 #' @param with_missing add missing values, default TRUE
-#' @param weight_missing controls proportion of missing values; greater weight means more missingness
+#' @param weight_missing one number in [0, 1]; greater weight means more missingness
 #' @param seed seed for reproducibility, if NULL no seed is set.
 #' @param N number of replicates per group
 #' @return A list containing simulated data and an analysis configuration.
@@ -176,6 +189,7 @@ sim_lfq_data_peptide_config <- function(
   seed = 1234,
   N = 4
 ) {
+  .assert_simulation_args(Nprot, weight_missing)
   .with_sim_seed(seed, {
     data <- sim_lfq_data(Nprot = Nprot, PEPTIDE = TRUE, N = N)
 
@@ -188,9 +202,9 @@ sim_lfq_data_peptide_config <- function(
   })
 }
 #' Simulate data, protein, with config
-#' @param Nprot number of proteins to simulate
+#' @param Nprot one positive whole number of proteins to simulate
 #' @param with_missing add missing values, default TRUE
-#' @param weight_missing controls proportion of missing values; greater weight means more missingness
+#' @param weight_missing one number in [0, 1]; greater weight means more missingness
 #' @param seed seed for reproducibility, if NULL no seed is set.
 #' @param paired if TRUE, add a paired subject factor to the design
 #' @return A list containing simulated data and an analysis configuration.
@@ -206,6 +220,12 @@ sim_lfq_data_peptide_config <- function(
 #' xp <- sim_lfq_data_protein_config(with_missing = FALSE, paired = TRUE)
 #' stopifnot(length(xp$config$factors) == 2)
 #' stopifnot(nrow(xp$data) == nrow(x$data))
+#' @srrstatsTODO {G2.0a} Simulator scalar sizes and missingness ranges are documented; limit: not all API multiplicities
+#'   are.
+#' @srrstatsTODO {G2.4a} Nprot is validated as a whole number; limit: other public count/size arguments are not all
+#'   validated.
+#' @srrstats {G5.1} Documented simulators and bundled datasets are publicly available for tests and examples.
+#' @srrstats {G5.5} Simulators use explicit reproducible seeds and restore the calling RNG state.
 sim_lfq_data_protein_config <- function(
   Nprot = 10,
   with_missing = TRUE,
@@ -213,6 +233,7 @@ sim_lfq_data_protein_config <- function(
   seed = 1234,
   paired = FALSE
 ) {
+  .assert_simulation_args(Nprot, weight_missing)
   .with_sim_seed(seed, {
     data <- sim_lfq_data(Nprot = Nprot, PEPTIDE = FALSE)
     if (paired) {
@@ -235,9 +256,9 @@ sim_lfq_data_protein_config <- function(
 
 
 #' Simulate data, protein, with config with 2 factors Treatment and Background
-#' @param Nprot number of proteins to simulate
+#' @param Nprot one positive whole number of proteins to simulate
 #' @param with_missing add missing values, default TRUE
-#' @param weight_missing controls proportion of missing values; greater weight means more missingness
+#' @param weight_missing one number in [0, 1]; greater weight means more missingness
 #' @param PEPTIDE if TRUE, simulate peptide-level data; if FALSE, protein-level
 #' @param seed seed for reproducibility, if NULL no seed is set.
 #' @param TWO use two factors for modelling
@@ -263,6 +284,7 @@ sim_lfq_data_2factor_config <- function(
   seed = 1234,
   TWO = TRUE
 ) {
+  .assert_simulation_args(Nprot, weight_missing)
   .with_sim_seed(seed, {
     res <- sim_lfq_data(
       Nprot = Nprot,
@@ -273,7 +295,7 @@ sim_lfq_data_2factor_config <- function(
     res <- res |> mutate(Treatment = case_when(group %in% c("Ctrl", "A") ~ "A", TRUE ~ "B"))
     data <- res |> mutate(Background = case_when(group %in% c("Ctrl", "C") ~ "Z", TRUE ~ "X"))
 
-    if (is.null(data$nrPeptides)) {
+    if (!"nrPeptides" %in% colnames(data)) {
       data$nrPeptides <- 1
     }
     data$nrPeptides[which_missing(data$abundance, weight_missing = weight_missing)] <- 0
@@ -291,9 +313,16 @@ sim_lfq_data_2factor_config <- function(
 }
 
 
-# Shared body of sim_build_models_lm() and sim_build_models_lmer(). mixed = TRUE simulates peptides, adds the random
-# effects (1|peptide_Id) + (1|sampleName) and fits with strategy_lmer(); its "parallel3" data ignores Nprot,
-# with_missing and weight_missing.
+#' Shared body of sim_build_models_lm() and sim_build_models_lmer(). mixed = TRUE simulates peptides, adds the random
+#'
+#' effects (1|peptide_Id) + (1|sampleName) and fits with strategy_lmer(); its "parallel3" data ignores Nprot,
+#' with_missing and weight_missing.
+#' @param model model or model specification used by the operation
+#' @param Nprot number of simulated proteins
+#' @param with_missing include simulated missing measurements
+#' @param weight_missing weight controlling simulated missingness
+#' @param mixed fit a nested mixed model rather than an aggregated linear model
+#' @noRd
 .sim_build_models <- function(model, Nprot, with_missing, weight_missing, mixed) {
   if (model != "parallel3") {
     istar <- prolfqua::sim_lfq_data_2factor_config(
@@ -350,7 +379,7 @@ sim_build_models_lm <- function(
 #' @family modelling
 #' @export
 #' @keywords internal
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' modi <- sim_build_models_lmer(model = "interaction", weight_missing = 1)
 #' stopifnot(sum(modi$model_df$has_model_fit) == 6)
 #' mod2 <- sim_build_models_lmer(model = "parallel2", weight_missing = 1)
@@ -374,7 +403,7 @@ sim_build_models_lmer <- function(
 #' @family modelling
 #' @export
 #' @keywords internal
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' m <- sim_make_model_lm()
 #' mi <- sim_make_model_lm("interaction")
 #' stopifnot(length(coefficients(summary(mi))[,"Estimate"]) == 4)
@@ -390,7 +419,7 @@ sim_make_model_lm <- function(model = c("parallel2", "parallel3", "factors", "in
 #' @family modelling
 #' @export
 #' @keywords internal
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' mf <- sim_make_model_lmer("factors")
 #' mi <- sim_make_model_lmer("interaction")
 #'

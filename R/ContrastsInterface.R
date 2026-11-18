@@ -16,6 +16,8 @@
 #' testthat::expect_error(int$filter_significant())
 #' identical(int$extra_artifacts(), list())
 #' int$column_description()
+#' @srrstatsTODO {G5.3} Tests check finite imputed/limma outputs; limit: not every column/backend has an undefined-value
+#'   assertion.
 ContrastsInterface <- R6::R6Class(
   "ContrastsInterface",
   public = list(
@@ -37,13 +39,13 @@ ContrastsInterface <- R6::R6Class(
     #' @description
     #' get table with sides of the contrast
     get_contrast_sides = function() {
-      stop("get_contrast_sides not implemented.")
+      abort_prolfqua("get_contrast_sides not implemented.")
     },
     #' @description
     #' get table with contrast results (similar to limma topTable function)
     #' @param all return all columns (TRUE) or the standard ones (FALSE)
     get_contrasts = function(all = FALSE) {
-      stop("get_contrasts not implemented.")
+      abort_prolfqua("get_contrasts not implemented.")
     },
     #' @description
     #' return \code{\link{ContrastsPlotter}} for the contrast results
@@ -75,7 +77,7 @@ ContrastsInterface <- R6::R6Class(
     #' get protein × contrast pairs that could not be estimated.
     #' Returns a data.frame with hierarchy columns and contrast, or 0 rows.
     get_missing = function() {
-      stop("get_missing not implemented.")
+      abort_prolfqua("get_missing not implemented.")
     },
     #' @description
     #' get rank-list input table for enrichment tools.
@@ -235,14 +237,29 @@ ContrastsInterface <- R6::R6Class(
   )
 )
 
+#' Require columns needed by a contrast operation
+#' @param contrasts named character vector of contrast expressions
+#' @param required column names required by the operation
+#' @param action operation described in a missing-column error
+#' @noRd
 .stop_if_missing_columns <- function(contrasts, required, action) {
   missing_columns <- setdiff(required, colnames(contrasts))
   if (length(missing_columns) > 0) {
-    stop("Cannot ", action, ". Missing columns: ", paste(missing_columns, collapse = ", "))
+    abort_prolfqua(
+      "Cannot ",
+      action,
+      ". Missing columns: ",
+      toString(missing_columns),
+      class = c("prolfqua_error_missing_column", "prolfqua_error_bad_argument")
+    )
   }
 }
 
-# Lead the contrast table with the model identity: modelName, then estimate_type.
+#' Lead the contrast table with the model identity: modelName, then estimate_type.
+#' @param contrast_result computed contrast table
+#' @param model_name model identity stored in output
+#' @param estimate_type label distinguishing observed and imputed estimates
+#' @noRd
 .stamp_model_identity <- function(contrast_result, model_name, estimate_type) {
   contrast_result$estimate_type <- estimate_type
   contrast_result <- dplyr::mutate(contrast_result, modelName = model_name, .before = 1)

@@ -15,12 +15,14 @@ sim_build_models_logistf(
 build dataframe with models for testing
 }
 \examples{
+\dontshow{if (requireNamespace("logistf", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 modi <- sim_build_models_logistf(model = "interaction", weight_missing = 1)
 stopifnot(dim(modi$model_df) == c(10,9))
 mod2 <- sim_build_models_logistf(model = "parallel2", weight_missing = 1)
 mod2$model_df$linear_model[[1]]
 mod3 <- sim_build_models_logistf(model = "parallel3", weight_missing = 1)
 modf <- sim_build_models_logistf(model = "factors", weight_missing = 1)
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other modelling:
@@ -98,7 +100,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

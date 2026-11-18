@@ -1,12 +1,14 @@
 # LFQDataAggregator ----
 
-# Shared helper: validate hierarchy is aggregatable
+#' Shared helper: validate hierarchy is aggregatable
+#' @param lfq LFQData to inspect
+#' @noRd
 .check_aggregatable <- function(lfq) {
   if (length(lfq$hierarchy_keys()) == 1) {
     abort_bad_argument(
       "lfq",
       "have more than one hierarchy level to aggregate from",
-      not = paste(lfq$hierarchy_keys(), collapse = ", ")
+      not = toString(lfq$hierarchy_keys())
     )
   }
   if (length(lfq$hierarchy_keys()) == length(lfq$relevant_hierarchy_keys())) {
@@ -15,7 +17,7 @@
       "have a hierarchy_depth below its number of hierarchy levels to aggregate",
       not = paste0(
         "hierarchy_keys = ",
-        paste(lfq$hierarchy_keys(), collapse = ", "),
+        toString(lfq$hierarchy_keys()),
         "; hierarchy_depth = ",
         length(lfq$relevant_hierarchy_keys())
       )
@@ -73,9 +75,11 @@ AggregatorBase <- R6::R6Class(
     #' @return file path
     write_plots = function(qcpath, subset = NULL, show.legend = FALSE, width = 6, height = 6) {
       pl <- self$plot(subset)
-      pb <- progress::progress_bar$new(total = nrow(pl))
+      pb <- .make_progress(nrow(pl))
       filepath <- file.path(qcpath, paste0(self$prefix, "_aggregation_plot.pdf"))
-      withr::local_pdf(filepath, width = width, height = height)
+      grDevices::pdf(filepath, width = width, height = height)
+      pdf_dev <- grDevices::dev.cur()
+      on.exit(.dev_close(pdf_dev), add = TRUE)
       for (i in seq_len(nrow(pl))) {
         .render_plot_to_device(pl$plots[[i]])
         pb$tick()
@@ -197,7 +201,7 @@ AggregateRlm <- R6::R6Class(
 #' @export
 #' @family LFQData
 #'
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #' istar <- prolfqua::sim_lfq_data_peptide_config()
 #' data <- istar$data |> dplyr::filter(protein_Id %in% sample(protein_Id, 100))
 #' lfqdata <- LFQData$new(data, istar$config)
@@ -262,7 +266,13 @@ AggregateTopN <- R6::R6Class(
 )
 
 
-# Helper: convert limpa EList back to long-format LFQData
+#' Helper: convert limpa EList back to long-format LFQData
+#' @param elist limpa EList with expression and uncertainty
+#' @param wide wide-format data, row identifiers and sample annotations
+#' @param config AnalysisConfiguration defining the column roles
+#' @param prefix prefix identifying the output level
+#' @param impute_only return imputed input without protein rollup
+#' @noRd
 .elist_to_lfqdata <- function(elist, wide, config, prefix, impute_only) {
   if (impute_only) {
     newconfig <- config$clone(deep = TRUE)
@@ -285,6 +295,11 @@ AggregateTopN <- R6::R6Class(
   LFQData$new(long_data, newconfig, prefix = prefix)
 }
 
+#' Call the limpa detection probability curve with its slope bound
+#' @param expr_matrix numeric feature-by-sample expression matrix
+#' @param b1.upper upper bound for the detection probability slope
+#' @param dpc_fun limpa detection-curve function
+#' @noRd
 .call_limpa_dpc <- function(expr_matrix, b1.upper = 1, dpc_fun = limpa::dpc) {
   dpc_args <- list(y = expr_matrix)
   if ("b1.upper" %in% names(formals(dpc_fun))) {
@@ -338,12 +353,7 @@ AggregateLimpa <- R6::R6Class(
     #' @param dpc_slope DPC slope parameter passed to limpa (default 0.8)
     #' @param impute_only if TRUE, use dpcQuantByRow instead of dpcQuant
     initialize = function(lfq, prefix = "protein", dpc_slope = 0.8, impute_only = FALSE) {
-      if (!requireNamespace("limpa", quietly = TRUE)) {
-        stop(
-          "Package 'limpa' is required for AggregateLimpa. ",
-          "Install it from Bioconductor: BiocManager::install('limpa')"
-        )
-      }
+      rlang::check_installed("limpa", reason = "for AggregateLimpa.")
       if (!impute_only) {
         .check_aggregatable(lfq)
       }
@@ -395,7 +405,7 @@ AggregateLimpa <- R6::R6Class(
     #' @return data.frame
     plot = function(subset = NULL, show.legend = FALSE) {
       if (self$impute_only) {
-        message("Aggregation plots not available in impute_only mode")
+        inform_prolfqua("AggregateLimpa$plot: aggregation plots not available in impute_only mode")
         return(invisible(NULL))
       }
       super$plot(subset = subset, show.legend = show.legend)
@@ -411,7 +421,7 @@ AggregateLimpa <- R6::R6Class(
     #' @return file path
     write_plots = function(qcpath, subset = NULL, show.legend = FALSE, width = 6, height = 6) {
       if (self$impute_only) {
-        message("Aggregation plots not available in impute_only mode")
+        inform_prolfqua("AggregateLimpa$write_plots: aggregation plots not available in impute_only mode")
         return(invisible(NULL))
       }
       super$write_plots(qcpath, subset, show.legend, width, height)

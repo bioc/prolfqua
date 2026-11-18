@@ -1,4 +1,7 @@
-# Facet formula "isotope label ~ factor1 + factor2" used by the missingness plots.
+#' Facet formula "isotope label ~ factor1 + factor2" used by the missingness plots.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param factors named list of explanatory-variable columns
+#' @noRd
 .isotope_by_factors_formula <- function(lfqdata, factors) {
   paste(lfqdata$isotope_label(), "~", paste(factors, collapse = "+"))
 }
@@ -23,9 +26,12 @@ encode_bin_resp <- function(lfqdata, name = "bin_resp") {
 
 # Functions - Missingness ----
 
-# Split a contrast "LHS - RHS" into its left/right side expressions, used by
-# get_contrast() to derive group_1 / group_2. Returns NULL for anything that is
-# not a top-level binary minus (get_contrast() rejects those).
+#' Split a contrast "LHS - RHS" into its left/right side expressions, used by
+#'
+#' get_contrast() to derive group_1 / group_2. Returns NULL for anything that is
+#' not a top-level binary minus (get_contrast() rejects those).
+#' @param contrast one contrast expression string
+#' @noRd
 .contrast_sides_expr <- function(contrast) {
   expr <- rlang::parse_expr(contrast)
   if (rlang::is_call(expr, "-") && length(expr) == 3L) {
@@ -66,22 +72,20 @@ get_contrast <- function(data, hierarchy_keys, contrasts) {
   names(res) <- names(contrasts)
   for (i in seq_along(contrasts)) {
     cname <- names(contrasts)[i]
-    message(cname, "=", contrasts[i], "\n")
 
     # A contrast must be a difference "LHS - RHS" (e.g. "group_A - group_B" or
     # "(group_A + group_B)/2 - group_Ctrl"). group_1 / group_2 are the evaluated
     # left / right sides; estimate is their difference.
     sx <- .contrast_sides_expr(contrasts[i])
     if (is.null(sx)) {
-      stop(
+      abort_prolfqua(
         "get_contrast: contrast '",
         cname,
         "' (",
         contrasts[i],
         ") is not of the required form 'LHS - RHS'. A contrast must be a ",
         "difference of two group expressions, e.g. 'group_A - group_B' or ",
-        "'(group_A + group_B)/2 - group_Ctrl'.",
-        call. = FALSE
+        "'(group_A + group_B)/2 - group_Ctrl'."
       )
     }
 
@@ -141,9 +145,8 @@ missigness_histogram <- function(lfqdata, showempty = FALSE, factors = lfqdata$r
 
   factors <- lfqdata$relevant_factor_keys()
   formula <- .isotope_by_factors_formula(lfqdata, factors)
-  message(formula)
   mean_abundance <- paste0("mean_", lfqdata$response())
-  missing_percent <- dplyr::rename(missing_percent, !!sym(mean_abundance) := .data$meanAbundance)
+  missing_percent <- dplyr::rename(missing_percent, !!sym(mean_abundance) := "meanAbundance")
 
   p <- ggplot2::ggplot(
     missing_percent,
@@ -188,7 +191,6 @@ missingness_per_condition_cumsum <- function(lfqdata, factors = lfqdata$relevant
   res <- xxcs |> dplyr::select(-dplyr::all_of("nrTransitions"))
 
   formula <- .isotope_by_factors_formula(lfqdata, factors)
-  message(formula)
 
   nudgeval <- mean(res$cumulative_sum) * 0.05
   p <- ggplot(res, aes(x = .data$nrNAs, y = .data$cumulative_sum)) +
@@ -231,7 +233,7 @@ missingness_per_condition <- function(lfqdata, factors = lfqdata$relevant_factor
     geom_bar(stat = "identity", color = "black", fill = "white") +
     geom_text(aes(label = !!sym(hierarchy_key)), nudge_y = nudgeval, angle = 45) +
     facet_grid(as.formula(formula))
-  xx <- tidyr::pivot_wider(xx, names_from = "nrNAs", values_from = hierarchy_key)
+  xx <- tidyr::pivot_wider(xx, names_from = "nrNAs", values_from = dplyr::all_of(hierarchy_key))
 
   return(list(data = xx, figure = p))
 }
@@ -245,7 +247,7 @@ missingness_per_condition <- function(lfqdata, factors = lfqdata$relevant_factor
 #' @family imputation
 #' @param lfqdata LFQData object
 #' @param tr if less than tr observations in condition then missing
-#' @examples
+#' @examplesIf requireNamespace("UpSetR", quietly = TRUE)
 #' istar <- sim_lfq_data_peptide_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
 #' pups <- upset_interaction_missing_stats(lfq)
@@ -273,7 +275,7 @@ upset_interaction_missing_stats <- function(lfqdata, tr = 2) {
 #' @keywords internal
 #' @family plotting
 #' @family imputation
-#' @examples
+#' @examplesIf requireNamespace("UpSetR", quietly = TRUE)
 #' istar <- sim_lfq_data_peptide_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
 #' pups <- upset_missing_stats(lfq)

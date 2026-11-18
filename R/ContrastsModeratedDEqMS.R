@@ -58,28 +58,28 @@ moderated_p_deqms <- function(mm, count_col, df = "df", estimate = "diff", loess
   }
 
   # Fit variance ~ count curve using LOESS
-  loess_fit <- stats::loess(logvar[ok] ~ log2count[ok], span = loess_span)
+  loess_fit <- stats::loess(
+    logvar ~ log2count,
+    data = data.frame(logvar = logvar[ok], log2count = log2count[ok]),
+    span = loess_span
+  )
 
   # Predict for all proteins (including those not used in fit)
   fitted_logvar <- rep(NA_real_, length(logvar))
   fitted_logvar[ok] <- stats::fitted(loess_fit)
-  # For non-ok, predict from the fit if possible
+  # For non-ok, predict from the fit if possible; outside the fitted count range this is NA
   not_ok <- !ok & is.finite(log2count)
   if (any(not_ok)) {
-    fitted_logvar[not_ok] <- predict(
-      loess_fit,
-      newdata = data.frame(
-        `log2count[ok]` = log2count[not_ok]
-      )
-    )
+    fitted_logvar[not_ok] <- stats::predict(loess_fit, newdata = data.frame(log2count = log2count[not_ok]))
   }
   # For any remaining NAs, use the mean fitted value
   fitted_logvar[is.na(fitted_logvar)] <- mean(fitted_logvar, na.rm = TRUE)
 
-  # Estimate d0 via trigamma approach
-  eg <- logvar - digamma(df_res / 2) + log(df_res / 2)
-  egpred <- fitted_logvar - digamma(df_res / 2) + log(df_res / 2)
-  myfct <- (eg - egpred)^2 - trigamma(df_res / 2)
+  # Estimate d0 via trigamma approach; rows without residual degrees of freedom get NA
+  half_df <- ifelse(is.finite(df_res) & df_res > 0, df_res / 2, NA_real_)
+  eg <- logvar - digamma(half_df) + log(half_df)
+  egpred <- fitted_logvar - digamma(half_df) + log(half_df)
+  myfct <- (eg - egpred)^2 - trigamma(half_df)
   mean_myfct <- mean(myfct[ok], na.rm = TRUE)
 
   d0 <- find_d0_deqms(mean_myfct)
@@ -94,6 +94,7 @@ moderated_p_deqms <- function(mm, count_col, df = "df", estimate = "diff", loess
     var_post <- s02
     df_total <- df_res
   }
+  df_total[which(df_total <= 0)] <- NA_real_
 
   # Moderated statistics
   moderated_se <- mm$std.error * sqrt(var_post) / mm$sigma
@@ -177,13 +178,12 @@ moderated_p_deqms_long <- function(mm, count_col, group_by_col = "contrast", est
     )
 
     if (length(warnings_i) > 0) {
-      group_label <- paste(
+      group_label <- toString(
         sprintf(
           "%s=%s",
           names(group_data),
           unlist(group_data[1, ], use.names = FALSE)
-        ),
-        collapse = ", "
+        )
       )
       if (!nzchar(group_label)) {
         group_label <- paste0("group_", i)
@@ -307,6 +307,19 @@ ContrastsModeratedDEqMS <- R6::R6Class(
       model_name = paste0(Contrast$model_name, "_DEqMS"),
       p.adjust = prolfqua::adjust_p_values
     ) {
+      if (!is.data.frame(count_df)) {
+        abort_bad_argument("count_df", "be a data frame")
+      }
+      missing <- setdiff(c(Contrast$subject_id, count_column), names(count_df))
+      if (length(missing) > 0) {
+        abort_missing_columns(missing, data_nm = "count_df")
+      }
+      if (!is.numeric(count_df[[count_column]])) {
+        abort_bad_argument("count_column", "name a numeric column in count_df")
+      }
+      if (!.is_finite_number(loess_span) || !all(loess_span > 0, loess_span <= 1)) {
+        abort_bad_argument("loess_span", "be one finite number in (0, 1]")
+      }
       self$Contrast <- Contrast
       self$subject_id <- Contrast$subject_id
       # Aggregate count_df to one row per subject_id (max count)
@@ -369,9 +382,7 @@ ContrastsModeratedDEqMS <- R6::R6Class(
 
       # modelName and estimate_type pass through from the wrapped contrast
       # unchanged; the DEqMS moderation is described in the methods text.
-      stopifnot(all(
-        super$column_description()$column_name %in% colnames(contrast_result)
-      ))
+      .stop_if_missing_columns(contrast_result, super$column_description()$column_name, "return contrasts")
 
       return(contrast_result)
     }

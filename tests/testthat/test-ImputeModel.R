@@ -1,5 +1,26 @@
 # Test imputed_model S3 class and build_model_impute
 
+test_that("coefficient tables use the borrowed covariance and df of imputed fits", {
+  data <- transform(iris, protein_Id = "p1")
+  model <- build_model(data, strategy_lm("Sepal.Length ~ Species"), subject_id = "protein_Id")
+  fit <- model$model_df$linear_model[[1]]
+  covariance <- stats::vcov(fit) * 10
+  model$model_df$linear_model[[1]] <- new_imputed_model(
+    fit,
+    covariance,
+    borrowed_sigma = 1,
+    borrowed_df = 7,
+    n_observed = nrow(data)
+  )
+  actual <- model$get_coefficients()
+  expect_equal(actual$Std..Error, unname(sqrt(diag(covariance))))
+  expect_equal(actual$df, rep(7, nrow(actual)))
+  expect_equal(
+    actual$Pr...t..,
+    unname(2 * stats::pt(-abs(actual$Estimate / sqrt(diag(covariance))), df = 7))
+  )
+})
+
 test_that("imputed_model S3 dispatch works", {
   dat <- data.frame(x = 1:10, y = rnorm(10))
   m <- lm(y ~ x, data = dat)
@@ -64,57 +85,61 @@ test_that("Contrasts work on imputed model", {
 
 
 test_that("LOD-imputed proteins are flagged via estimate_type", {
-  # Fixture chosen to guarantee some singular fits that get rescued via
-  # impute_refit_singular. Without the rescue, build_model alone would
-  # leave those proteins with NA estimates; with build_model_impute,
-  # they fit successfully but should be tagged so consumers can tell
-  # rescued rows from clean ones.
-  istar <- sim_lfq_data_protein_config(Nprot = 50, weight_missing = 0.5, seed = 42)
-  lfqdata <- LFQData$new(istar$data, istar$config)
-  lfqdata$rename_response("transformedIntensity")
-  strat <- strategy_lm(paste(lfqdata$response(), "~ group_"))
+  muffle_warnings_matching(one_group_warning, expr = {
+    # Fixture chosen to guarantee some singular fits that get rescued via
+    # impute_refit_singular. Without the rescue, build_model alone would
+    # leave those proteins with NA estimates; with build_model_impute,
+    # they fit successfully but should be tagged so consumers can tell
+    # rescued rows from clean ones.
+    istar <- sim_lfq_data_protein_config(Nprot = 50, weight_missing = 0.5, seed = 42)
+    lfqdata <- LFQData$new(istar$data, istar$config)
+    lfqdata$rename_response("transformedIntensity")
+    strat <- strategy_lm(paste(lfqdata$response(), "~ group_"))
 
-  mod_plain <- build_model(lfqdata, strat)
-  mod_impute <- build_model_impute(lfqdata, strat)
+    mod_plain <- build_model(lfqdata, strat)
+    mod_impute <- build_model_impute(lfqdata, strat)
 
-  # build_model_impute should add an imputed column flagging refit rows.
-  expect_true("imputed" %in% colnames(mod_impute$model_df))
-  n_imputed <- sum(mod_impute$model_df$imputed, na.rm = TRUE)
-  expect_gt(n_imputed, 0)
+    # build_model_impute should add an imputed column flagging refit rows.
+    expect_true("imputed" %in% colnames(mod_impute$model_df))
+    n_imputed <- sum(mod_impute$model_df$imputed, na.rm = TRUE)
+    expect_gt(n_imputed, 0)
 
-  # And the underlying plain model_df should not have it (back-compat).
-  expect_false("imputed" %in% colnames(mod_plain$model_df))
+    # And the underlying plain model_df should not have it (back-compat).
+    expect_false("imputed" %in% colnames(mod_plain$model_df))
 
-  Contr <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
+    Contr <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
 
-  # modelName is the model identity (uniform); the LOD-rescue state lives in
-  # the separate estimate_type column ("lod_imputed" for refit proteins).
-  ctr_impute <- Contrasts$new(mod_impute, Contr)$get_contrasts()
-  expect_setequal(unique(ctr_impute$modelName), "WaldTest")
-  expect_true("estimate_type" %in% colnames(ctr_impute))
-  expect_setequal(unique(ctr_impute$estimate_type), c("observed", "lod_imputed"))
-  expect_equal(sum(ctr_impute$estimate_type == "lod_imputed"), n_imputed)
+    # modelName is the model identity (uniform); the LOD-rescue state lives in
+    # the separate estimate_type column ("lod_imputed" for refit proteins).
+    ctr_impute <- Contrasts$new(mod_impute, Contr)$get_contrasts()
+    expect_setequal(unique(ctr_impute$modelName), "WaldTest")
+    expect_true("estimate_type" %in% colnames(ctr_impute))
+    expect_setequal(unique(ctr_impute$estimate_type), c("observed", "lod_imputed"))
+    expect_equal(sum(ctr_impute$estimate_type == "lod_imputed"), n_imputed)
 
-  # The plain Contrasts path: a single uniform modelName, all observed.
-  ctr_plain <- Contrasts$new(mod_plain, Contr)$get_contrasts()
-  expect_setequal(unique(ctr_plain$modelName), "WaldTest")
-  expect_setequal(unique(ctr_plain$estimate_type), "observed")
+    # The plain Contrasts path: a single uniform modelName, all observed.
+    ctr_plain <- Contrasts$new(mod_plain, Contr)$get_contrasts()
+    expect_setequal(unique(ctr_plain$modelName), "WaldTest")
+    expect_setequal(unique(ctr_plain$estimate_type), "observed")
+  })
 })
 
 
 test_that("lm_impute facade surfaces LOD-rescued rows via estimate_type", {
-  istar <- sim_lfq_data_protein_config(Nprot = 50, weight_missing = 0.5, seed = 42)
-  lfqdata <- LFQData$new(istar$data, istar$config)
-  lfqdata$rename_response("transformedIntensity")
-  contrasts <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
+  muffle_warnings_matching(one_group_warning, expr = {
+    istar <- sim_lfq_data_protein_config(Nprot = 50, weight_missing = 0.5, seed = 42)
+    lfqdata <- LFQData$new(istar$data, istar$config)
+    lfqdata$rename_response("transformedIntensity")
+    contrasts <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
 
-  fa <- ContrastsLMImputeFacade$new(lfqdata, "~ group_", contrasts)
-  res <- fa$get_contrasts()
-  # modelName is the facade key; rescued rows are distinguished by estimate_type.
-  expect_setequal(unique(res$modelName), "lm_impute")
-  expect_true("estimate_type" %in% colnames(res))
-  expect_true("observed" %in% res$estimate_type)
-  expect_true("lod_imputed" %in% res$estimate_type)
+    fa <- ContrastsLMImputeFacade$new(lfqdata, "~ group_", contrasts)
+    res <- fa$get_contrasts()
+    # modelName is the facade key; rescued rows are distinguished by estimate_type.
+    expect_setequal(unique(res$modelName), "lm_impute")
+    expect_true("estimate_type" %in% colnames(res))
+    expect_true("observed" %in% res$estimate_type)
+    expect_true("lod_imputed" %in% res$estimate_type)
+  })
 })
 
 
@@ -151,11 +176,15 @@ test_that("borrow_method vcov works", {
 
   contrasts <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
 
-  fa <- ContrastsLMImputeFacade$new(
-    lfqdata,
-    "~ group_",
-    contrasts,
-    borrow_method = "vcov"
+  # some fits of this fixture lack a coefficient, so vcov borrowing falls back to sigma
+  expect_warning(
+    fa <- ContrastsLMImputeFacade$new(
+      lfqdata,
+      "~ group_",
+      contrasts,
+      borrow_method = "vcov"
+    ),
+    "falling back to sigma"
   )
   res <- fa$get_contrasts()
   expect_s3_class(res, "data.frame")
@@ -179,4 +208,26 @@ test_that("df_method borrowed works", {
   res <- fa$get_contrasts()
   expect_s3_class(res, "data.frame")
   expect_true(nrow(res) > 0)
+})
+
+test_that("imputed fits identify observed and completed rows", {
+  sim <- sim_lfq_data_protein_config(Nprot = 12, weight_missing = 0, seed = 42)
+  lfq <- LFQData$new(sim$data, sim$config)
+  dat <- lfq$data_long()
+  protein <- unique(dat$protein_Id)[1]
+  lfq$set_data(dat[!(dat$protein_Id == protein & dat$group_ == "A"), ])
+  model <- build_model_impute(lfq, strategy_lm(paste(lfq$response(), "~ group_")))
+  row <- which(model$model_df$protein_Id == protein)
+  fit <- model$model_df$linear_model[[row]]
+  data <- model$model_df$data[[row]]
+  expect_equal(attr(fit, "imputed_rows"), data$group_ == "A")
+  expect_equal(sum(!attr(fit, "imputed_rows")), attr(fit, "n_observed"))
+})
+
+test_that("rfit reports its fitted observation count", {
+  skip_if_not_installed("Rfit")
+  dat <- iris
+  dat$Sepal.Length[1] <- NA_real_
+  fit <- strategy_rfit("Sepal.Length ~ Species")$model_fun(dat)
+  expect_equal(stats::nobs(fit), 149L)
 })

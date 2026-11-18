@@ -12,9 +12,10 @@ sim_make_model_lmer(
 make interaction model for examples
 }
 \examples{
+\dontshow{if (requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 mf <- sim_make_model_lmer("factors")
 mi <- sim_make_model_lmer("interaction")
-
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other modelling:
@@ -92,7 +93,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

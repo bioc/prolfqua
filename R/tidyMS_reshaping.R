@@ -68,7 +68,7 @@ tidy_to_wide_config <- function(
     !setequal(row_keys, c(lfqdata$hierarchy_keys(), lfqdata$isotope_label())) &&
       anyDuplicated(long[c(row_keys, newcolname)]) > 0
   ) {
-    abort_bad_argument("row_keys", "identify one value per sample", not = paste(row_keys, collapse = ", "))
+    abort_bad_argument("row_keys", "identify one value per sample", not = toString(row_keys))
   }
   res <- long |>
     tidyr::pivot_wider(names_from = all_of(newcolname), values_from = all_of(value))
@@ -87,7 +87,9 @@ tidy_to_wide_config <- function(
   return(list(data = res, annotation = ids, rowdata = rowdata))
 }
 
-# Input checks of lfqdata_from_wide(): `values` is a named list of matrices of one shape.
+#' Input checks of lfqdata_from_wide(): `values` is a named list of matrices of one shape.
+#' @param values named list of feature-by-sample matrices with matching dimensions and column names
+#' @noRd
 .check_wide_values <- function(values) {
   is_named_matrix_list <- is.list(values) &&
     !is.null(names(values)) &&
@@ -108,7 +110,12 @@ tidy_to_wide_config <- function(
   invisible(TRUE)
 }
 
-# Input checks of lfqdata_from_wide(): rowdata and annotation match the matrices.
+#' Input checks of lfqdata_from_wide(): rowdata and annotation match the matrices.
+#' @param values named list of feature-by-sample matrices with matching dimensions and column names
+#' @param rowdata one row of identifiers per feature
+#' @param annotation one row of annotations per sample
+#' @param config AnalysisConfiguration defining the column roles
+#' @noRd
 .check_wide_input <- function(values, rowdata, annotation, config) {
   .check_wide_values(values)
   first <- values[[1]]
@@ -129,7 +136,11 @@ tidy_to_wide_config <- function(
   invisible(TRUE)
 }
 
-# One feature x sample matrix to long format, keyed by row position and sample.
+#' One feature x sample matrix to long format, keyed by row position and sample.
+#' @param mat feature-by-sample matrix
+#' @param value name of the output measurement column
+#' @param sample_name column identifying samples
+#' @noRd
 .wide_matrix_to_long <- function(mat, value, sample_name) {
   long <- tibble::as_tibble(mat, .name_repair = "minimal")
   long$.row <- seq_len(nrow(long))
@@ -161,6 +172,9 @@ tidy_to_wide_config <- function(
 #' wide <- tidy_to_wide_config(lfqdata, as.matrix = TRUE)
 #' back <- lfqdata_from_wide(wide$data, wide$rowdata, wide$annotation, lfqdata$get_config())
 #' stopifnot(nrow(back$data_long()) == nrow(lfqdata$data_long()))
+#' @srrstatsTODO {G2.7} Long data frames and wide matrices are supported; limit: no SummarizedExperiment input adapter.
+#' @srrstatsTODO {G2.10} Most extraction uses names and [[; limit: cross-class data.frame/tibble/data.table tests are
+#'   incomplete.
 lfqdata_from_wide <- function(values, rowdata, annotation, config, prefix = "ms") {
   if (is.matrix(values)) {
     values <- stats::setNames(list(values), config$get_response())

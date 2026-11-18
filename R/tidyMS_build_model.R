@@ -12,7 +12,7 @@
 #' data_2Factor <- prolfqua::sim_lfq_data_2factor_config(
 #'  Nprot = 200,
 #'  with_missing = TRUE,
-#'  weight_missing = 2)
+#'  weight_missing = 1)
 #'
 #' pMerged <- LFQData$new(data_2Factor$data, data_2Factor$config)
 #'
@@ -59,9 +59,9 @@ LR_test <- function(
     )
   likelihood_ratio_test_result <- reg |>
     dplyr::select(!!sym(subject_id), dplyr::all_of("modelComparisonLikelihoodRatioTest")) |>
-    tidyr::unnest(cols = c("modelComparisonLikelihoodRatioTest"))
+    tidyr::unnest(cols = "modelComparisonLikelihoodRatioTest")
   likelihood_ratio_test_result <- likelihood_ratio_test_result |>
-    dplyr::rename(likelihood_ratio_test.pValue = .data$modelComparisonLikelihoodRatioTest)
+    dplyr::rename(likelihood_ratio_test.pValue = "modelComparisonLikelihoodRatioTest")
 
   if (!is.null(path)) {
     plot_lrt_diagnostics(likelihood_ratio_test_result, model_name, model_name_int, path)
@@ -82,10 +82,12 @@ LR_test <- function(
 #' @return path the file was written to (invisible)
 #' @keywords internal
 plot_lrt_diagnostics <- function(result, model_name, model_name_int, path) {
-  file_name <- paste("hist_LRT_", model_name, "_", model_name_int, ".pdf", sep = "")
+  file_name <- paste0("hist_LRT_", model_name, "_", model_name_int, ".pdf")
   file_name <- file.path(path, file_name)
-  message("writing figure : ", file_name, "\n")
-  withr::local_pdf(file_name)
+  inform_prolfqua("writing figure: ", file_name)
+  grDevices::pdf(file_name)
+  pdf_dev <- grDevices::dev.cur()
+  on.exit(.dev_close(pdf_dev), add = TRUE)
   par(mfrow = c(2, 1))
   hist(result$likelihood_ratio_test.pValue, breaks = 20)
   plot(ecdf(result$likelihood_ratio_test.pValue))
@@ -106,7 +108,7 @@ plot_lrt_diagnostics <- function(result, model_name, model_name_int, path) {
 #' @seealso \code{\link{model_analyse}}, \code{\link{strategy_lmer}} \code{\link{strategy_lm}}
 #'
 #' @export
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' D <- prolfqua::sim_lfq_data_peptide_config(Nprot = 20, weight_missing = 0.1)
 #' D$data$abundance |> is.na() |> sum()
 #' D <- prolfqua::sim_lfq_data_peptide_config(Nprot = 20, weight_missing = 0.1, seed =3)
@@ -131,17 +133,25 @@ plot_lrt_diagnostics <- function(result, model_name, model_name_int, path) {
 #' model_summary(mod)
 #'
 #'
+#' @srrstatsTODO {G2.14b} Fits omit missing responses and get_missing reports unestimable contrasts; limit: per-fit
+#'   omission is silent.
 build_model <- function(
   data,
   model_strategy,
-  subject_id = if ("LFQData" %in% class(data)) {
+  subject_id = if (inherits(data, "LFQData")) {
     data$subject_id()
   } else {
     "protein_Id"
   },
   model_name = model_strategy$model_name
 ) {
-  nested_data <- if ("LFQData" %in% class(data)) data$data_long() else data
+  nested_data <- if (inherits(data, "LFQData")) data$data_long() else data
+  if (!is.null(model_strategy$weights)) {
+    missing <- setdiff(model_strategy$weights, names(nested_data))
+    if (length(missing) > 0) {
+      abort_missing_columns(missing)
+    }
+  }
   modelling_result <- model_analyse(nested_data, model_strategy, model_name = model_name, subject_id = subject_id)
   return(Model$new(
     model_df = modelling_result$model_df,
@@ -182,6 +192,9 @@ build_model <- function(
 #' strat <- strategy_lm(paste(lfqdata$response(), "~ group_"))
 #' mod <- build_model_impute(lfqdata, strat)
 #'
+#' @srrstatsTODO {G2.14} Users select plain or imputed methods; limit: there is no unified explicit NA policy.
+#' @srrstats {G2.14c} The imputation builder refits missing groups at the LOD and borrows variance from successful
+#'   fits.
 build_model_impute <- function(
   lfqdata,
   model_strategy,
@@ -191,6 +204,12 @@ build_model_impute <- function(
   df_method = c("observed", "borrowed"),
   on_misalign = c("fallback", "fail")
 ) {
+  if (!inherits(lfqdata, "LFQData")) {
+    abort_bad_argument("lfqdata", "be an LFQData object")
+  }
+  if (!is.null(lod) && (!is.numeric(lod) || length(lod) != 1 || !is.finite(lod))) {
+    abort_bad_argument("lod", "be NULL or one finite number")
+  }
   borrow_method <- match.arg(borrow_method)
   df_method <- match.arg(df_method)
   on_misalign <- match.arg(on_misalign)
@@ -217,7 +236,12 @@ build_model_impute <- function(
   model
 }
 
-# The limit of detection: `lod` if given, else estimated from the data.
+#' The limit of detection: `lod` if given, else estimated from the data.
+#' @param lod limit of detection on the response scale
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @noRd
+#' @srrstatsTODO {G5.8a} Empty LOD/contrast/plot cases are tested; limit: zero-row primary entry points are not fully
+#'   tested.
 .resolve_lod <- function(lod, lfqdata) {
   if (!is.null(lod)) {
     return(lod)
@@ -225,8 +249,11 @@ build_model_impute <- function(
   MissingHelpers$new(lfqdata$data_long(), lfqdata$get_config())$get_lod()
 }
 
-# One row per sample holding the annotation columns (file, sample, factors), which do not vary per
-# subject. Subject-specific value columns such as nr_children are not included.
+#' One row per sample holding the annotation columns (file, sample, factors), which do not vary per
+#'
+#' subject. Subject-specific value columns such as nr_children are not included.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @noRd
 .sample_template <- function(lfqdata) {
   data <- lfqdata$data_long()
   data |>
@@ -276,32 +303,30 @@ build_model_impute <- function(
 impute_from_model <- function(model, lfqdata) {
   subject_id <- model$subject_id
   if (!identical(subject_id, lfqdata$subject_id())) {
-    stop(
+    abort_prolfqua(
       "Model subject_id (",
-      paste(subject_id, collapse = ", "),
+      toString(subject_id),
       ") differs from lfqdata subject_id (",
-      paste(lfqdata$subject_id(), collapse = ", "),
-      ").",
-      call. = FALSE
+      toString(lfqdata$subject_id()),
+      ")."
     )
   }
   model_df <- dplyr::ungroup(model$model_df)
   fits <- model_df$linear_model[model_df$has_model_fit]
   is_lm <- vapply(fits, inherits, logical(1), what = "lm")
   if (!all(is_lm)) {
-    stop(
+    abort_prolfqua(
       "impute_from_model() needs lm fits, but model '",
       model$model_name,
       "' has fits of class '",
       class(fits[[which(!is_lm)[1]]])[1],
-      "'.",
-      call. = FALSE
+      "'."
     )
   }
   response <- lfqdata$response()
   model_response <- deparse(model$model_strategy$formula[[2]])
   if (!identical(model_response, response)) {
-    stop("Model response '", model_response, "' differs from lfqdata response '", response, "'.", call. = FALSE)
+    abort_prolfqua("Model response '", model_response, "' differs from lfqdata response '", response, "'.")
   }
 
   fit_table <- model_df |>
@@ -323,13 +348,12 @@ impute_from_model <- function(model, lfqdata) {
     dplyr::ungroup() |>
     dplyr::left_join(fit_table, by = subject_id)
   if (anyNA(per_subject$has_model_fit)) {
-    stop(
+    abort_prolfqua(
       "Model '",
       model$model_name,
       "' has no row for ",
       sum(is.na(per_subject$has_model_fit)),
-      " subject(s) of lfqdata.",
-      call. = FALSE
+      " subject(s) of lfqdata."
     )
   }
 
@@ -358,6 +382,13 @@ impute_from_model <- function(model, lfqdata) {
   )
 }
 
+#' Fill missing responses from an available fitted model
+#' @param rows all sample rows for one subject
+#' @param fit fitted model
+#' @param has_model_fit whether the subject has a usable fitted model
+#' @param imputed whether the fit was refitted after LOD imputation
+#' @param response name of the numeric response column
+#' @noRd
 .fill_missing_response <- function(rows, fit, has_model_fit, imputed, response) {
   missing <- is.na(rows[[response]])
   route <- if (!any(missing)) {
@@ -380,8 +411,12 @@ impute_from_model <- function(model, lfqdata) {
   )
 }
 
-# predict.lm() fails on a factor level the fit never saw, e.g. a pair whose
-# samples are all missing; such a subject has no usable fit.
+#' predict.lm() fails on a factor level the fit never saw, e.g. a pair whose
+#'
+#' samples are all missing; such a subject has no usable fit.
+#' @param fit fitted model
+#' @param newdata sample rows to predict
+#' @noRd
 .fit_knows_levels <- function(fit, newdata) {
   all(vapply(
     names(fit$xlevels),
@@ -396,7 +431,7 @@ impute_from_model <- function(model, lfqdata) {
 #' @keywords internal
 #' @family modelling
 #' @export
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' D <- prolfqua::sim_lfq_data_peptide_config(Nprot = 20, weight_missing = 0.1)
 #' formula_rp <- strategy_lmer("abundance ~ group_ + (1 | peptide_Id) + (1 | sampleName)")
 #' mod <- prolfqua::build_model(
@@ -414,6 +449,10 @@ model_summary <- function(mod) {
 
 # Model fitting internals ----
 
+#' Compare nested model fits by a likelihood ratio test
+#' @param modelNO reduced model
+#' @param model model or model specification used by the operation
+#' @noRd
 .likelihood_ratio_test <- function(modelNO, model) {
   res <- tryCatch(anova(modelNO, model), error = function(x) NULL)
   if (!is.null(res)) {
@@ -445,6 +484,7 @@ model_summary <- function(mod) {
 #' @param borrowed_sigma numeric, borrowed residual standard error / scale
 #' @param borrowed_df numeric, borrowed residual degrees of freedom
 #' @param n_observed integer, number of non-imputed observations
+#' @param imputed_rows logical vector identifying rows filled at the LOD
 #' @return imputed_model object
 #' @keywords internal
 #' @family modelling
@@ -467,11 +507,12 @@ model_summary <- function(mod) {
 #' stopifnot(df.residual(wrapped) == 6)
 #' # coefficients() still dispatches to underlying lm
 #' stopifnot(identical(coefficients(wrapped), coefficients(fit)))
-new_imputed_model <- function(model, borrowed_vcov, borrowed_sigma, borrowed_df, n_observed) {
+new_imputed_model <- function(model, borrowed_vcov, borrowed_sigma, borrowed_df, n_observed, imputed_rows = NULL) {
   attr(model, "borrowed_vcov") <- borrowed_vcov
   attr(model, "borrowed_sigma") <- borrowed_sigma
   attr(model, "borrowed_df") <- borrowed_df
   attr(model, "n_observed") <- n_observed
+  attr(model, "imputed_rows") <- imputed_rows
   class(model) <- c("imputed_model", class(model))
   model
 }
@@ -502,8 +543,8 @@ df.residual.imputed_model <- function(object, ...) {
 #' @param on_misalign behaviour when donor \code{vcov} matrices cannot be
 #'   aligned by coefficient name (\code{method = "vcov"} only). "fallback"
 #'   (default) warns and falls back to the sigma method, preserving the lm
-#'   behaviour. "fail" signals a \code{prolfqua_borrow_failed} condition so the
-#'   caller can skip the rescue; backends without an lm-style
+#'   behaviour. "fail" borrows from the largest subset sharing the maximal
+#'   coefficient set without a sigma fallback; backends without an lm-style
 #'   \code{summary(fit)$cov.unscaled} (e.g. rfit) must use this because the
 #'   sigma fallback is not applicable to them.
 #' @return list with sigma, df, method, and optionally vcov
@@ -527,6 +568,7 @@ df.residual.imputed_model <- function(object, ...) {
 #'   mod_no_missing$model_df, method = "vcov")
 #' stopifnot(borrowed_v$method == "vcov")
 #' stopifnot(is.matrix(borrowed_v$vcov))
+#' @srrstatsTODO {G3.1} Imputation can borrow sigma or vcov; limit: there is no arbitrary covariance-function argument.
 compute_borrowed_variance <- function(
   model_df,
   method = c("sigma", "vcov"),
@@ -535,10 +577,10 @@ compute_borrowed_variance <- function(
   method <- match.arg(method)
   on_misalign <- match.arg(on_misalign)
   good <- get_complete_model_fit(model_df)
-  good <- good |> dplyr::filter(.data$isSingular == FALSE)
+  good <- good |> dplyr::filter(!.data$isSingular)
 
   if (nrow(good) == 0) {
-    stop("No successful model fits available to borrow variance from.", call. = FALSE)
+    abort_prolfqua("No successful model fits available to borrow variance from.")
   }
 
   borrowed_sigma <- stats::median(good$sigma, na.rm = TRUE)
@@ -558,18 +600,12 @@ compute_borrowed_variance <- function(
     # and a few partial-design donors (e.g. a protein missing a whole group)
     # must not poison the element-wise median.
     keys <- vapply(vcov_list, function(v) paste(rownames(v), collapse = "\r"), character(1))
-    lens <- vapply(vcov_list, function(v) nrow(v), integer(1))
+    lens <- vapply(vcov_list, nrow, integer(1))
     maximal_keys <- keys[lens == max(lens)]
     tab <- table(maximal_keys)
     target <- names(tab)[order(-as.integer(tab), names(tab))][1]
     keep <- keys == target
-    if (!any(keep)) {
-      rlang::abort(
-        "No donor fits with a borrowable full covariance matrix.",
-        class = "prolfqua_borrow_failed",
-        call = NULL
-      )
-    }
+    # target is selected from the existing donor keys, so this subset is nonempty.
     vcov_list <- vcov_list[keep]
   } else {
     # Historical lm behaviour: require ALL donors to align by coefficient name,
@@ -616,9 +652,8 @@ compute_borrowed_variance <- function(
 #'   NA values in this column are filled with 1 for imputed rows so that
 #'   weighted lm fits do not fail
 #' @param on_misalign passed to \code{\link{compute_borrowed_variance}}. With
-#'   "fail", an unborrowable full covariance matrix skips the rescue (the
-#'   model_df is returned unchanged) instead of crashing, so the affected
-#'   proteins surface in \code{get_missing()}.
+#'   "fail", full covariance is borrowed from donors sharing the maximal
+#'   coefficient set, without falling back to sigma borrowing.
 #' @return modified model_df with imputed models replacing failed/singular ones
 #' @keywords internal
 #' @family modelling
@@ -647,18 +682,7 @@ impute_refit_singular <- function(
     return(model_df)
   }
 
-  # Only on_misalign = "fail" signals prolfqua_borrow_failed.
-  borrowed <- tryCatch(
-    compute_borrowed_variance(model_df, method = borrow_method, on_misalign = on_misalign),
-    prolfqua_borrow_failed = function(e) NULL
-  )
-  # When full-covariance borrowing is impossible (e.g. rfit, which has no
-  # lm-style cov.unscaled to fall back to), skip the rescue: leave the
-  # failed/singular proteins untouched so they surface in get_missing()
-  # rather than carrying underestimated uncertainty.
-  if (is.null(borrowed)) {
-    return(model_df)
-  }
+  borrowed <- compute_borrowed_variance(model_df, method = borrow_method, on_misalign = on_misalign)
 
   impute_idx <- which(needs_impute)
   results <- vector("list", length(impute_idx))
@@ -704,20 +728,22 @@ impute_refit_singular <- function(
   return(model_df)
 }
 
-# Impute and refit a single protein's model
-#
-# Takes one protein's nested data, imputes missing values with LOD,
-# refits the model, and wraps it with borrowed covariance.
-#
-# @param dat data.frame for one protein (nested row)
-# @param model_strategy strategy object with model_fun
-# @param lod limit of detection value
-# @param response response column name
-# @param sample_template data.frame with all sample/group combinations
-# @param borrowed list from compute_borrowed_variance()
-# @param df_method "observed" or "borrowed"
-# @return named list of updated fields, or NULL if refit fails
-# @keywords internal
+#' Impute and refit a single protein's model
+#'
+#' Takes one protein's nested data, imputes missing values with LOD,
+#' refits the model, and wraps it with borrowed covariance.
+#'
+#' @param dat data.frame for one protein (nested row)
+#' @param model_strategy strategy object with model_fun
+#' @param lod limit of detection value
+#' @param response response column name
+#' @param sample_template data.frame with all sample/group combinations
+#' @param borrowed list from compute_borrowed_variance()
+#' @param df_method "observed" or "borrowed"
+#' @return named list of updated fields, or NULL if refit fails
+#' @keywords internal
+#' @param nr_children_col column tracking measured child-feature counts
+#' @noRd
 .impute_one_protein <- function(
   dat,
   model_strategy,
@@ -738,11 +764,18 @@ impute_refit_singular <- function(
     dat[[nr_children_col]] <- ifelse(is.na(dat[[nr_children_col]]), 1, dat[[nr_children_col]])
   }
 
+  imputed_rows <- is.na(dat[[response]])
+
   # Impute NAs with LOD, clamp all values to max(value, LOD)
   dat[[response]] <- ifelse(is.na(dat[[response]]), lod, dat[[response]])
   dat[[response]] <- pmax(dat[[response]], lod)
 
-  new_model <- model_strategy$model_fun(dat)
+  # A refit that fails (e.g. Rfit on a response that is constant at the LOD) leaves the
+  # protein unrescued, so it is reported by get_missing(); its fit warning adds nothing.
+  new_model <- withCallingHandlers(
+    model_strategy$model_fun(dat),
+    prolfqua_fit_failed = function(w) invokeRestart("muffleWarning")
+  )
   if (is.character(new_model)) {
     return(NULL)
   }
@@ -758,7 +791,7 @@ impute_refit_singular <- function(
 
   # Borrowed covariance
   if (borrowed$method == "sigma") {
-    cov_unscaled <- summary(new_model)$cov.unscaled
+    cov_unscaled <- .cov_unscaled(new_model)
     imp_vcov <- borrowed$sigma^2 * cov_unscaled
   } else {
     imp_vcov <- borrowed$vcov
@@ -769,7 +802,8 @@ impute_refit_singular <- function(
     borrowed_vcov = imp_vcov,
     borrowed_sigma = borrowed$sigma,
     borrowed_df = imp_df,
-    n_observed = n_observed
+    n_observed = n_observed,
+    imputed_rows = imputed_rows
   )
 
   list(
@@ -783,18 +817,33 @@ impute_refit_singular <- function(
 }
 
 
+#' (X'X)^-1 of an lm fit, as summary.lm() computes it, without summary.lm()'s
+#'
+#' residual checks: a refit at the LOD can be a perfect fit, and its residual
+#' variance is replaced by the borrowed one anyway.
+#' @param fit fitted model
+#' @noRd
+.cov_unscaled <- function(fit) {
+  p <- seq_len(fit$rank)
+  cov_unscaled <- chol2inv(fit$qr$qr[p, p, drop = FALSE])
+  coef_names <- names(stats::coef(fit))[fit$qr$pivot[p]]
+  dimnames(cov_unscaled) <- list(coef_names, coef_names)
+  cov_unscaled
+}
+
+
 # Fit the models to data ----
 
 #' retrieve complete models.
 #' @keywords internal
 #' @family modelling
 #' @export
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' x <- sim_build_models_lmer(model = "factors", Nprot = 10)
 #' cfits <- get_complete_model_fit(x$model_df)
 #' stopifnot(nrow(cfits) == 6)
 get_complete_model_fit <- function(complete_models) {
-  complete_models <- complete_models |> dplyr::filter(.data$has_model_fit == TRUE)
+  complete_models <- complete_models |> dplyr::filter(.data$has_model_fit)
   complete_models <- complete_models |>
     dplyr::filter(.data$nr_coef_not_NA == max(.data$nr_coef_not_NA)) |>
     dplyr::arrange(dplyr::desc(.data$nr_coef_not_NA))
@@ -815,7 +864,7 @@ get_complete_model_fit <- function(complete_models) {
 #' @export
 #' @family modelling
 #' @keywords internal
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #'
 #' x <- sim_lfq_data_peptide_config()
 #' formula_randomPeptide <-
@@ -825,6 +874,10 @@ get_complete_model_fit <- function(complete_models) {
 #'  subject_id = x$config$hierarchy_keys_depth())
 #' stopifnot(nrow(get_complete_model_fit(mr$model_df)) == 6)
 #'
+#' @srrstatsTODO {RE3.1} model_analyse retains fit status and errors; convergence metadata and suppression are not
+#'   uniform.
+#' @srrstatsTODO {RE4.7} Fit tables retain status and singularity; limit: optimizer/iteration metadata is not exposed
+#'   uniformly.
 model_analyse <- function(
   pepIntensity,
   model_strategy,

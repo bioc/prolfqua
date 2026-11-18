@@ -37,6 +37,13 @@ sigma.rlm <- function(object, ...) {
 #'
 #' @return An R6 class generator.
 #' @keywords internal
+#' @srrstatsTODO {RE2.4} StrategyBase flags singular fits after fitting; limit: there is no common preprocessing
+#'   dependency check.
+#' @srrstatsTODO {RE2.4a} Some strategies detect deficient rank; there is no shared upfront predictor-collinearity
+#'   diagnostic.
+#' @srrstatsTODO {RE3.0} Failed fits and Firth exhaustion are reported; nonconvergence metadata is not uniform per
+#'   subject.
+#' @srrstats {RE4.1} Strategies expose a formula and fitting specification without fitting a model.
 StrategyBase <- R6::R6Class(
   "StrategyBase",
   public = list(
@@ -51,11 +58,7 @@ StrategyBase <- R6::R6Class(
     #' @param modelstr model formula string
     #' @param model_name name of model
     initialize = function(modelstr, model_name = "Model") {
-      is_formula_string <- is.character(modelstr) && length(modelstr) == 1 && grepl("~", modelstr, fixed = TRUE)
-      if (!(inherits(modelstr, "formula") || is_formula_string)) {
-        abort_bad_argument("modelstr", "be a formula or a single string containing `~`")
-      }
-      self$formula <- as.formula(modelstr)
+      self$formula <- .as_model_formula(modelstr)
       self$model_name <- model_name
       self$anova_df <- get_anova_df(test = "F")
     },
@@ -93,7 +96,7 @@ StrategyBase <- R6::R6Class(
   private = list(
     # Input preparation that runs outside the error handler of model_fun().
     prepare = function(x) x,
-    fit = function(x) stop("fit is not implemented")
+    fit = function(x) abort_prolfqua("fit is not implemented")
   )
 )
 
@@ -105,7 +108,7 @@ StrategyBase <- R6::R6Class(
 #' @return An R6 class generator.
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' istar <- prolfqua::sim_lfq_data_peptide_config(Nprot = 10, with_missing = FALSE)
 #' istar <- prolfqua::LFQData$new(istar$data, istar$config)
 #' istar$set_data(istar$data_long() |> dplyr::group_by(protein_Id) |>
@@ -127,6 +130,10 @@ StrategyLmer <- R6::R6Class(
     contrast_fun = function(...) compute_lmer_contrast(...)
   ),
   private = list(
+    prepare = function(x) {
+      rlang::check_installed(c("lme4", "lmerTest"), reason = "for mixed models.")
+      x
+    },
     fit = function(x) lmerTest::lmer(self$formula, data = x)
   )
 )
@@ -272,15 +279,16 @@ strategy_rlm <- function(modelstr, model_name = "Model") {
 AnovaExtractor <- R6::R6Class(
   "AnovaExtractor",
   public = list(
-    #' @field test statistical test type ("F", "Chisq", etc.)
+    #' @field test one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".
     test = "F",
-    #' @field col_pval p-value column name in ANOVA output
+    #' @field col_pval p-value column name in ANOVA output; empty for "Cp", which has no p-value.
     col_pval = character(),
     #' @description Create a new AnovaExtractor
-    #' @param test statistical test type
+    #' @param test one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".
+    #'   The fitted model's ANOVA method must support the chosen test.
     initialize = function(test = "F") {
-      self$test <- test
-      self$col_pval <- paste0("Pr..", substr(test, 1, 3), ".")
+      self$test <- .arg_match_prolfqua(test, c("F", "Chisq", "LRT", "Rao", "Cp"), "test")
+      self$col_pval <- switch(self$test, F = "Pr..F.", Cp = character(), "Pr..Chi.")
     },
     #' @description Extract ANOVA table from a fitted model
     #' @param x a fitted model
@@ -295,6 +303,9 @@ AnovaExtractor <- R6::R6Class(
 )
 
 #' anova returning dataframe
+#' @param test one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".
+#'   The fitted model's ANOVA method must support the chosen test.
+#' @return An \code{\link{AnovaExtractor}} object.
 #' @keywords internal
 #' @family modelling
 #' @export

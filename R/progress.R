@@ -13,13 +13,17 @@
 # tokens = list())`. This keeps prolfqua free of a hard `logger` dependency --
 # it only ever invokes a user-supplied `function(i, total, label)`.
 
-# A reporter that does nothing -- used for empty loops (total <= 0).
+#' A reporter that does nothing -- used for empty loops (total <= 0).
+#' @noRd
 .null_reporter <- function() {
   list(tick = function(len = 1, tokens = list()) invisible(NULL))
 }
 
-# Format a number of seconds as a short human-readable duration ("45s", "2.3m",
-# "1.4h").
+#' Format a number of seconds as a short human-readable duration ("45s", "2.3m",
+#'
+#' "1.4h").
+#' @param secs duration in seconds
+#' @noRd
 .format_duration <- function(secs) {
   if (!is.finite(secs) || secs < 0) {
     return("?")
@@ -33,14 +37,21 @@
   sprintf("%.1fh", secs / 3600)
 }
 
-# A reporter that throttles output: it emits only on the final tick, or once at
-# least `min_interval` seconds have elapsed since the last emit, or once at
-# least `min_pct` percent of additional progress has accrued. This avoids tens
-# of thousands of chatty lines while still proving liveness.
-#
-# `callback` mode calls `callback(i, total, label)` -- the documented public
-# contract for the `prolfqua.progress` option. Without a callback it emits a
-# `message()` heartbeat with elapsed time and ETA.
+#' A reporter that throttles output: it emits only on the final tick, or once at
+#'
+#' least `min_interval` seconds have elapsed since the last emit, or once at
+#' least `min_pct` percent of additional progress has accrued. This avoids tens
+#' of thousands of chatty lines while still proving liveness.
+#'
+#' `callback` mode calls `callback(i, total, label)` -- the documented public
+#' contract for the `prolfqua.progress` option. Without a callback it emits a
+#' `message()` heartbeat with elapsed time and ETA.
+#' @param total total number of progress steps
+#' @param label progress label
+#' @param callback optional progress callback
+#' @param min_interval minimum seconds between progress reports
+#' @param min_pct minimum percentage increase between reports
+#' @noRd
 .throttled_reporter <- function(
   total,
   label = NULL,
@@ -91,6 +102,17 @@
   )
 }
 
+#' The terminal progress bar of the progress package, or no reporter when it is not installed.
+#' @param total total number of progress steps
+#' @noRd
+.default_progress_bar <- function(total) {
+  if (.has_package("progress")) {
+    progress::progress_bar$new(total = total)
+  } else {
+    .null_reporter()
+  }
+}
+
 #' Build a progress reporter for the per-protein / per-contrast loops
 #'
 #' Internal factory used by `model_analyse()` and the contrast loops. The
@@ -118,7 +140,7 @@
     return(.null_reporter())
   }
   if (is.null(reporter)) {
-    return(progress::progress_bar$new(total = total))
+    return(.default_progress_bar(total))
   }
   if (is.function(reporter)) {
     return(.throttled_reporter(total, label, callback = reporter))
@@ -126,5 +148,5 @@
   if (identical(reporter, "message")) {
     return(.throttled_reporter(total, label))
   }
-  rlang::abort("unknown prolfqua.progress reporter: use NULL, a function(i, total, label), or 'message'")
+  abort_prolfqua("unknown prolfqua.progress reporter: use NULL, a function(i, total, label), or 'message'")
 }

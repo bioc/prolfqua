@@ -187,13 +187,20 @@ summarize_stats_quantiles <- function(
 }
 
 
-# Two-sample t-test sample sizes for sd and delta (recycled); each sd is first floored at the smallest sd that
-# min.n samples per group can resolve.
+#' Two-sample t-test sample sizes for sd and delta (recycled); each sd is first floored at the smallest sd that
+#'
+#' min.n samples per group can resolve.
+#' @param sd response standard deviations
+#' @param delta effect sizes to detect
+#' @param power target power
+#' @param sig.level test significance level
+#' @param min.n minimum sample count per group
+#' @noRd
 .power_t_test_n <- function(sd, delta, power, sig.level, min.n) {
   min_sd <- purrr::map_dbl(delta, function(d) {
     power.t.test(delta = d, n = min.n, sd = NULL, power = power, sig.level = sig.level)$sd
   })
-  sdtrimmed <- dplyr::if_else(sd < min_sd, min_sd, sd)
+  sdtrimmed <- pmax(sd, min_sd)
   N_exact <- purrr::map2_dbl(sdtrimmed, delta, function(s, d) {
     power.t.test(delta = d, sd = s, power = power, sig.level = sig.level)$n
   })
@@ -333,7 +340,7 @@ plot_stat_density_median <- function(
 #'
 plot_stat_violin <- function(pdata, factor_keys_depth, stat = c("CV", "meanAbundance", "sd")) {
   stat <- match.arg(stat)
-  pdata <- pdata |> tidyr::unite("groups", factor_keys_depth)
+  pdata <- pdata |> tidyr::unite("groups", dplyr::all_of(factor_keys_depth))
   p <- ggplot(pdata, aes(x = .data$groups, y = .data[[stat]])) +
     geom_violin() +
     ggplot2::stat_summary(fun = median, geom = "point", size = 1, color = "black")

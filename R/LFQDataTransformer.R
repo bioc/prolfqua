@@ -83,6 +83,17 @@
 #' robscale <- lfqdata2$get_Transformer()$robscale_subset(internal)$lfq
 #' robscale$get_Plotter()$intensity_distribution_density()
 #'
+#' # Apply a one-unit log2 offset to the first sample
+#' tr <- lfqdata$get_Transformer()$log2()
+#' samples <- unique(tr$lfq$data_long()[[tr$lfq$sample_name()]])
+#' offsets <- setNames(numeric(length(samples)), samples)
+#' offsets[1] <- 1
+#' tr$subtract_sample_offsets(offsets)
+#'
+#' @srrstatsTODO {G2.16} Log transforms diagnose zeros/negatives; limit: no shared Inf/NaN policy before every model
+#'   backend.
+#' @srrstatsTODO {RE2.3} Transformer centering is explicit; limit: its inferential effect on contrasts lacks
+#'   documentation/tests.
 LFQDataTransformer <- R6::R6Class(
   "LFQDataTransformer",
   public = list(
@@ -126,9 +137,8 @@ LFQDataTransformer <- R6::R6Class(
     #' @return LFQDataTransformer (self)
     #'
     robscale_subset = function(lfqsubset, preserve_mean = TRUE, colname = "transformed_abundance") {
-      message("data is : ", self$lfq$is_transformed())
       if (self$lfq$is_transformed() != lfqsubset$is_transformed()) {
-        warning("the subset must have the same config as self")
+        abort_bad_argument("lfqsubset", "have the same transformation state (is_transformed) as self")
       }
       cfg <- self$lfq$get_config()$clone(deep = TRUE)
       scaled <- prolfqua::scale_with_subset(self$lfq, lfqsubset, preserve_mean = preserve_mean, colname = colname)
@@ -142,7 +152,6 @@ LFQDataTransformer <- R6::R6Class(
     #' @return LFQDataTransformer (self)
     #'
     center_to_reference = function(lfqsubset) {
-      message("data is transformed: ", self$lfq$is_transformed())
       if (self$lfq$is_transformed() != lfqsubset$is_transformed()) {
         abort_bad_argument("lfqsubset", "have the same transformation state (is_transformed) as self")
       }
@@ -150,6 +159,27 @@ LFQDataTransformer <- R6::R6Class(
         warning("data should be log2 transformed")
       }
       self$lfq <- center_to_reference_cfg(self$lfq, lfqsubset)
+      invisible(self)
+    },
+
+    #' @description
+    #' Subtract caller-supplied offsets from the active log2 response. The caller supplies
+    #' log2 data and chooses the global level through the offsets. Missing intensities
+    #' remain missing. The result becomes the active response in a new column named
+    #' \code{<response>_offset_adjusted}, with a numeric suffix if the name already exists.
+    #' @param offsets Named numeric vector with one finite log2 offset per sample.
+    #'   Names must match the configured sample IDs exactly and may be in any order.
+    #' @return LFQDataTransformer (self, invisibly)
+    subtract_sample_offsets = function(offsets) {
+      data <- self$lfq$data_long()
+      sample_ids <- as.character(data[[self$lfq$sample_name()]])
+      matched_offsets <- .match_sample_offsets(offsets, sample_ids)
+      response <- self$lfq$response()
+      colname <- tail(make.unique(c(names(data), paste0(response, "_offset_adjusted"))), 1)
+      data[[colname]] <- data[[response]] - matched_offsets
+      cfg <- self$lfq$get_config()$clone(deep = TRUE)
+      cfg$set_response(colname)
+      self$lfq <- LFQData$new(data, cfg, prefix = self$lfq$prefix)
       invisible(self)
     },
 
@@ -200,6 +230,31 @@ LFQDataTransformer <- R6::R6Class(
 )
 
 # Intensity transformation helpers ----
+
+#' Validate log2 offsets and align them to the sample ID of each measurement
+#' @param offsets Named numeric vector of finite log2 offsets, one per sample.
+#' @param sample_ids Character vector of sample IDs in measurement order.
+#' @return Unnamed numeric vector of offsets in measurement order.
+#' @noRd
+.match_sample_offsets <- function(offsets, sample_ids) {
+  if (!is.numeric(offsets) || !is.null(dim(offsets)) || any(!is.finite(offsets))) {
+    abort_bad_argument("offsets", "be a numeric vector of finite log2 offsets")
+  }
+  offset_ids <- names(offsets)
+  valid_ids <- all(
+    !is.null(offset_ids),
+    !anyNA(offset_ids),
+    all(nzchar(offset_ids)),
+    anyDuplicated(offset_ids) == 0L
+  )
+  if (!valid_ids) {
+    abort_bad_argument("offsets", "have unique, nonempty sample IDs as names")
+  }
+  if (!setequal(offset_ids, sample_ids)) {
+    abort_bad_argument("offsets", "name exactly the samples in the data")
+  }
+  unname(offsets[sample_ids])
+}
 
 #' Transform intensity column by applying a function
 #' @param pdata data.frame
@@ -252,7 +307,7 @@ transform_work_intensity <- function(pdata, response, .func, .funcname = NULL) {
     dplyr::mutate(
       !!sym(newcol) := .func(!!sym(response))
     )
-  message("Column added : ", newcol)
+  inform_prolfqua("Column added : ", newcol)
   return(list(data = pdata, colname = newcol))
 }
 
@@ -350,6 +405,8 @@ get_robscales <- function(lfqdata) {
 #' mat <- matrix(c(1, 2, 3, 4, 10, 12), nrow = 3)
 #' scaled <- robust_scale(mat)
 #' dim(scaled)
+#' @srrstatsTODO {G5.8c} Tests cover zero MAD, constant heatmaps and missing groups; limit: constant/all-NA model inputs
+#'   remain.
 robust_scale <- function(data, dim = 2, preserve_mean = FALSE) {
   .apply_robscales(
     data,
@@ -360,14 +417,21 @@ robust_scale <- function(data, dim = 2, preserve_mean = FALSE) {
   )
 }
 
-# center by the medians and scale by the relative mads (see .get_robscales); warns with `zero_mad_warning`
-# and skips the scaling when a mad is zero
+#' center by the medians and scale by the relative mads (see .get_robscales); warns with `zero_mad_warning`
+#'
+#' and skips the scaling when a mad is zero
+#' @param data numeric measurement matrix
+#' @param scales per-margin medians and median absolute deviations
+#' @param preserve_mean restore the overall mean after scaling
+#' @param dim matrix margin to scale
+#' @param zero_mad_warning warning emitted when scaling cannot divide by the MAD
+#' @noRd
 .apply_robscales <- function(data, scales, preserve_mean, dim, zero_mad_warning) {
   data <- sweep(data, dim, scales$medians, "-")
-  if (!any(scales$mads == 0)) {
-    data <- sweep(data, dim, scales$mads / mean(scales$mads), "/")
-  } else {
+  if (any(scales$mads == 0)) {
     warning(zero_mad_warning)
+  } else {
+    data <- sweep(data, dim, scales$mads / mean(scales$mads), "/")
   }
   data + if (preserve_mean) mean(scales$medians) else 0
 }
@@ -450,7 +514,12 @@ scale_with_subset <- function(lfqdata, lfqsubset, preserve_mean = FALSE, colname
 }
 
 
-# Function to normalize protein abundances by subtracting sample means of reference proteins
+#' Function to normalize protein abundances by subtracting sample means of reference proteins
+#' @param df long-format protein measurements to center
+#' @param df_reference reference protein measurements
+#' @param sample_name column identifying samples
+#' @param abundance_column column containing intensities
+#' @noRd
 center_to_reference <- function(
   df,
   df_reference,

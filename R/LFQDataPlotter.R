@@ -1,12 +1,16 @@
-# Keep the `top_n` most variable features for the intensity heatmap.
-#
-# Ranks features by their prolfqua variability statistic (CV for untransformed
-# data, sd for transformed data; see LFQDataStats) and keeps the most variable.
-# The heatmap clusters rows with stats::hclust, which errors above 65536
-# features, so this keeps clustering feasible (and the plot legible) for
-# peptide-list / entrapment searches with tens of thousands of degenerate
-# protein groups. `top_n = NULL` / non-finite keeps all features.
-# Returns a subset of wide$data in the original row order.
+#' Keep the `top_n` most variable features for the intensity heatmap.
+#'
+#' Ranks features by their prolfqua variability statistic (CV for untransformed
+#' data, sd for transformed data; see LFQDataStats) and keeps the most variable.
+#' The heatmap clusters rows with stats::hclust, which errors above 65536
+#' features, so this keeps clustering feasible (and the plot legible) for
+#' peptide-list / entrapment searches with tens of thousands of degenerate
+#' protein groups. `top_n = NULL` / non-finite keeps all features.
+#' Returns a subset of wide$data in the original row order.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param wide wide-format data, row identifiers and sample annotations
+#' @param top_n maximum number of variable features to retain
+#' @noRd
 .select_most_variable_features <- function(lfqdata, wide, top_n) {
   mat <- wide$data
   if (is.null(top_n) || !is.finite(top_n) || nrow(mat) <= top_n) {
@@ -33,8 +37,7 @@
 #'
 #' @family LFQData
 #' @import dplyr
-#' @importFrom UpSetR upset
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_peptide_config()
 #'
@@ -213,6 +216,7 @@ LFQDataPlotter <- R6::R6Class(
     #' @param PC default c(1,2) - first and second principal component
     #' @return plotly
     pca_plotly = function(PC = c(1, 2), add_txt = FALSE) {
+      rlang::check_installed("plotly", reason = "for interactive plots.")
       fig <- plotly::ggplotly(self$pca(add_txt = add_txt), tooltip = self$lfq$sample_name())
       return(fig)
     },
@@ -286,7 +290,7 @@ LFQDataPlotter <- R6::R6Class(
     pairs_smooth = function(max = 10) {
       lfq <- self$lfq
       sample_col <- lfq$sample_name()
-      samples <- dplyr::select(lfq$data_long(), sample_col) |>
+      samples <- dplyr::select(lfq$data_long(), dplyr::all_of(sample_col)) |>
         distinct() |>
         pull()
       if (length(samples) > max) {
@@ -307,6 +311,7 @@ LFQDataPlotter <- R6::R6Class(
     #' upset plot based on presence absence information
     #' @return plot
     upset_missing = function() {
+      rlang::check_installed("UpSetR", reason = "for UpSet plots.")
       pups <- prolfqua::upset_missing_stats(self$lfq)
       res <- UpSetR::upset(pups$data, order.by = "freq", nsets = pups$nsets)
       return(res)
@@ -323,13 +328,14 @@ LFQDataPlotter <- R6::R6Class(
         filename <- self$prefix
       }
       fpath <- file.path(path_qc, paste0(filename, "boxplot.pdf"))
-      message("generating boxplots")
       bb <- self$boxplots()
 
-      message("writing ", fpath)
-      pb <- progress::progress_bar$new(total = length(bb$boxplot))
+      inform_prolfqua("writing ", fpath)
+      pb <- .make_progress(length(bb$boxplot))
 
-      withr::local_pdf(fpath, width = width, height = height)
+      grDevices::pdf(fpath, width = width, height = height)
+      pdf_dev <- grDevices::dev.cur()
+      on.exit(.dev_close(pdf_dev), add = TRUE)
       for (x in bb$boxplot) {
         pb$tick()
         .render_plot_to_device(x)
@@ -346,8 +352,10 @@ LFQDataPlotter <- R6::R6Class(
     #' @return path the file was written to
     write_pdf = function(fig, path_qc, fig_name, width = 7, height = 7) {
       fpath <- file.path(path_qc, paste0(self$prefix, fig_name, ".pdf"))
-      message("writing ", fpath)
-      withr::local_pdf(fpath, width = width, height = height)
+      inform_prolfqua("writing ", fpath)
+      grDevices::pdf(fpath, width = width, height = height)
+      pdf_dev <- grDevices::dev.cur()
+      on.exit(.dev_close(pdf_dev), add = TRUE)
       .render_plot_to_device(fig)
       invisible(fpath)
     }

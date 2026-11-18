@@ -28,7 +28,7 @@ StrategyLimma <- R6::R6Class(
     #' @description Create a new StrategyLimma
     #' @param modelstr,model_name,trend,robust,weights see \code{\link{strategy_limma}}
     initialize = function(modelstr, model_name = "limma", trend = FALSE, robust = FALSE, weights = NULL) {
-      self$formula <- as.formula(modelstr)
+      self$formula <- .as_model_formula(modelstr)
       self$model_name <- model_name
       self$trend <- trend
       self$robust <- robust
@@ -82,7 +82,7 @@ compute_borrowed_variance_limma <- function(fit) {
       fit$df.residual > 1
   )
   if (length(good) == 0) {
-    stop("No successful limma fits available to borrow variance from.", call. = FALSE)
+    abort_prolfqua("No successful limma fits available to borrow variance from.")
   }
   list(
     sigma = stats::median(fit$sigma[good], na.rm = TRUE),
@@ -116,6 +116,9 @@ compute_borrowed_variance_limma <- function(fit) {
 #' @importFrom methods new
 #' @keywords internal
 .lfqdata_to_elist <- function(lfqdata, formula) {
+  if (length(formula) != 3 || !identical(formula[[2]], as.name(lfqdata$response()))) {
+    abort_bad_argument("modelstr", "use the configured LFQData response on the left of `~`")
+  }
   wide <- lfqdata$data_wide(as.matrix = TRUE)
   expr_matrix <- wide$data
   annotation <- wide$annotation
@@ -175,6 +178,9 @@ compute_borrowed_variance_limma <- function(fit) {
 
   if (is.character(strategy$weights) && length(strategy$weights) == 1) {
     wcol <- strategy$weights
+    if (!wcol %in% names(lfqdata$data_long())) {
+      abort_missing_columns(wcol, data_nm = "lfqdata")
+    }
     if (wcol %in% colnames(annotation)) {
       return(annotation[[wcol]])
     }
@@ -191,14 +197,28 @@ compute_borrowed_variance_limma <- function(fit) {
     }
   }
 
-  NULL
+  abort_bad_argument("weights", "be NULL, one column name, or a numeric matrix")
 }
 
+#' Wrap a matrix fit and its metadata in ModelLimma
+#' @param fit fitted model
+#' @param setup matrix data and metadata returned by .lfqdata_to_elist
+#' @param strategy modelling strategy
+#' @param model_name model identity stored in output
+#' @param dummy_model representative fit used to construct linear functions
+#' @param E expression matrix used for the stored coefficients
+#' @param weights observation-weight matrix or NULL
+#' @param observed logical matrix identifying originally observed responses
+#' @param imputed_proteins identifiers of proteins refitted at the LOD
+#' @noRd
 .new_model_limma <- function(
   fit,
   setup,
   strategy,
   model_name,
+  E,
+  weights,
+  observed,
   dummy_model = setup$dummy_model,
   imputed_proteins = character(0)
 ) {
@@ -211,11 +231,20 @@ compute_borrowed_variance_limma <- function(fit) {
     robust = strategy$robust,
     dummy_model = dummy_model,
     p.adjust = prolfqua::adjust_p_values,
-    imputed_proteins = imputed_proteins
+    imputed_proteins = imputed_proteins,
+    E = E,
+    weights = weights,
+    observed = observed,
+    annotation = setup$annotation,
+    formula = strategy$formula
   )
 }
 
-# lm of one expression row on the design, used to derive the linear functions of the contrasts.
+#' lm of one expression row on the design, used to derive the linear functions of the contrasts.
+#' @param annotation one row of annotations per sample
+#' @param rhs_formula response-free model formula
+#' @param response numeric response vector, with one value per annotation row
+#' @noRd
 .limma_dummy_model <- function(annotation, rhs_formula, response) {
   dummy_data <- annotation
   dummy_data$.response <- as.numeric(response)
@@ -223,6 +252,11 @@ compute_borrowed_variance_limma <- function(fit) {
   lm(dummy_formula, data = dummy_data)
 }
 
+#' Replace missing expression cells with the LOD and set their weights to one
+#' @param expr_matrix numeric feature-by-sample expression matrix
+#' @param weights optional observation weights
+#' @param lod limit of detection on the response scale
+#' @noRd
 .impute_limma_data <- function(expr_matrix, weights, lod) {
   na_mask <- is.na(expr_matrix)
   expr_imputed <- expr_matrix
@@ -239,9 +273,30 @@ compute_borrowed_variance_limma <- function(fit) {
   )
 }
 
-# Shared body of the build_model_limma* builders. `fit_fun(expression, design, weights = )` fits the
-# expression matrix. With `impute = TRUE`, proteins with NA coefficients are refit on LOD-imputed data
-# and get the variance borrowed from the successful fits.
+#' Fit an expression matrix and retain its observation weights
+#' @param expression feature-by-sample response matrix
+#' @param design sample-by-coefficient design matrix
+#' @param weights observation or sample weights, or NULL
+#' @noRd
+.fit_limma <- function(expression, design, weights = NULL) {
+  list(
+    fit = limma::lmFit(expression, design, weights = weights),
+    weights = if (is.null(weights)) NULL else limma::asMatrixWeights(weights, dim(expression))
+  )
+}
+
+#' Shared body of the build_model_limma* builders. `fit_fun(expression, design, weights = )` fits the
+#'
+#' expression matrix. With `impute = TRUE`, proteins with NA coefficients are refit on LOD-imputed data
+#' and get the variance borrowed from the successful fits.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param strategy modelling strategy
+#' @param model_name model identity stored in output
+#' @param fit_fun function fitting an expression matrix on a design matrix
+#' @param impute refit proteins with non-estimable coefficients at the LOD
+#' @param lod limit of detection on the response scale
+#' @param df_method use observed or borrowed residual degrees of freedom
+#' @noRd
 .build_model_limma_core <- function(
   lfqdata,
   strategy,
@@ -253,16 +308,31 @@ compute_borrowed_variance_limma <- function(fit) {
 ) {
   setup <- .lfqdata_to_elist(lfqdata, strategy$formula)
   weights <- .resolve_weights(lfqdata, strategy, setup$annotation)
-  fit <- fit_fun(setup$expr_matrix, setup$design, weights = weights)
+  fitted <- withCallingHandlers(
+    fit_fun(setup$expr_matrix, setup$design, weights = weights),
+    warning = function(w) {
+      # with impute = TRUE, the proteins with NA coefficients are refit below
+      if (impute && grepl("^Partial NA coefficients", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+  fit <- fitted$fit
+  observed <- is.finite(setup$expr_matrix)
+  if (!is.null(weights)) {
+    input_weights <- limma::asMatrixWeights(weights, dim(setup$expr_matrix))
+    observed <- observed & is.finite(input_weights) & input_weights > 0
+  }
   failed <- if (impute) which(rowSums(is.na(fit$coefficients)) > 0) else integer(0)
   if (length(failed) == 0) {
-    return(.new_model_limma(fit, setup, strategy, model_name))
+    return(.new_model_limma(fit, setup, strategy, model_name, setup$expr_matrix, fitted$weights, observed))
   }
 
   lod <- .resolve_lod(lod, lfqdata)
   borrowed <- compute_borrowed_variance_limma(fit)
   imputed <- .impute_limma_data(setup$expr_matrix, weights, lod)
-  fit_lod <- fit_fun(imputed$expression, setup$design, weights = imputed$weights)
+  fitted_lod <- fit_fun(imputed$expression, setup$design, weights = imputed$weights)
+  fit_lod <- fitted_lod$fit
   fit$coefficients[failed, ] <- fit_lod$coefficients[failed, ]
   fit$stdev.unscaled[failed, ] <- fit_lod$stdev.unscaled[failed, ]
   fit$sigma[failed] <- borrowed$sigma
@@ -272,16 +342,28 @@ compute_borrowed_variance_limma <- function(fit) {
   } else {
     fit$df.residual[failed] <- borrowed$df
   }
+  E <- setup$expr_matrix
+  E[failed, ] <- imputed$expression[failed, ]
+  if (!is.null(fitted$weights)) {
+    fitted$weights[failed, ] <- fitted_lod$weights[failed, ]
+  }
   .new_model_limma(
     fit,
     setup,
     strategy,
     model_name,
+    E,
+    fitted$weights,
+    observed,
     dummy_model = .limma_dummy_model(setup$annotation, setup$rhs_formula, imputed$expression[1, ]),
     imputed_proteins = setup$rowdata[failed, setup$subject_id[1], drop = TRUE]
   )
 }
 
+#' Multiply vooma precision weights by external observation or sample weights
+#' @param vooma_weights matrix of abundance-dependent precision weights
+#' @param external_weights optional external observation or sample weights
+#' @noRd
 .combine_vooma_weights <- function(vooma_weights, external_weights) {
   if (is.null(external_weights)) {
     return(vooma_weights)
@@ -296,6 +378,11 @@ compute_borrowed_variance_limma <- function(fit) {
     )
 }
 
+#' Plot the abundance-dependent residual standard deviation trend
+#' @param mean_expression mean log expression per protein
+#' @param sigma residual standard deviations
+#' @param lowess_trend smoothed abundance-variance trend
+#' @noRd
 .plot_vooma_trend <- function(mean_expression, sigma, lowess_trend) {
   graphics::plot(
     mean_expression,
@@ -309,6 +396,13 @@ compute_borrowed_variance_limma <- function(fit) {
   graphics::lines(lowess_trend, col = "red", lwd = 2)
 }
 
+#' Fit limma with precision weights from an abundance-variance trend
+#' @param expression numeric feature-by-sample expression matrix
+#' @param design sample-by-coefficient design matrix
+#' @param weights optional observation weights
+#' @param span smoothing span for the variance trend
+#' @param plot draw the fitted variance trend
+#' @noRd
 .fit_vooma <- function(
   expression,
   design,
@@ -345,7 +439,7 @@ compute_borrowed_variance_limma <- function(fit) {
       lowess_trend
     )
   }
-  limma::lmFit(
+  .fit_limma(
     expression,
     design,
     weights = .combine_vooma_weights(
@@ -383,7 +477,7 @@ compute_borrowed_variance_limma <- function(fit) {
 #' mod_limma$get_anova()
 #'
 build_model_limma <- function(lfqdata, strategy, model_name = strategy$model_name) {
-  .build_model_limma_core(lfqdata, strategy, model_name, limma::lmFit)
+  .build_model_limma_core(lfqdata, strategy, model_name, .fit_limma)
 }
 
 
@@ -430,7 +524,7 @@ build_model_limma_impute <- function(
   df_method = c("observed", "borrowed")
 ) {
   df_method <- match.arg(df_method)
-  .build_model_limma_core(lfqdata, strategy, model_name, limma::lmFit, impute = TRUE, lod = lod, df_method = df_method)
+  .build_model_limma_core(lfqdata, strategy, model_name, .fit_limma, impute = TRUE, lod = lod, df_method = df_method)
 }
 
 
@@ -554,6 +648,16 @@ ModelLimma <- R6::R6Class(
   public = list(
     #' @field fit limma MArrayLM object from lmFit
     fit = NULL,
+    #' @field E response matrix used for the stored coefficients
+    E = NULL,
+    #' @field weights observation-weight matrix or NULL
+    weights = NULL,
+    #' @field observed logical matrix identifying responses observed before imputation
+    observed = NULL,
+    #' @field annotation sample table in response-matrix column order
+    annotation = NULL,
+    #' @field formula fitted model formula, including the response
+    formula = NULL,
     #' @field subject_id protein ID column name(s)
     subject_id = character(),
     #' @field model_name model name
@@ -568,10 +672,10 @@ ModelLimma <- R6::R6Class(
     dummy_model = NULL,
     #' @field p.adjust function to adjust p-values
     p.adjust = NULL,
-    #' @field imputed_proteins character vector of protein ids (matching
-    #'   \code{rownames(fit$coefficients)}) that were rescued via LOD
+    #' @field imputed_proteins character vector of bare protein ids (matching
+    #'   the first subject column in \code{rowdata}) that were rescued via LOD
     #'   imputation. \code{ContrastsLimma$get_contrasts()} reads this to
-    #'   tag refit rows with a \code{"_imputed"} modelName suffix so the
+    #'   tag refit rows with \code{estimate_type = "lod_imputed"} so the
     #'   rescue is visible downstream. Empty for builders that do not
     #'   impute.
     imputed_proteins = character(0),
@@ -586,6 +690,7 @@ ModelLimma <- R6::R6Class(
     #' @param dummy_model one fitted lm for linfct extraction
     #' @param p.adjust function to adjust p-values
     #' @param imputed_proteins character vector of LOD-rescued protein ids
+    #' @param E,weights,observed,annotation,formula retained fitted inputs; see the corresponding fields
     initialize = function(
       fit,
       subject_id,
@@ -595,7 +700,12 @@ ModelLimma <- R6::R6Class(
       robust = FALSE,
       dummy_model = NULL,
       p.adjust = prolfqua::adjust_p_values,
-      imputed_proteins = character(0)
+      imputed_proteins = character(0),
+      E = NULL,
+      weights = NULL,
+      observed = NULL,
+      annotation = NULL,
+      formula = NULL
     ) {
       self$fit <- fit
       self$subject_id <- subject_id
@@ -606,6 +716,11 @@ ModelLimma <- R6::R6Class(
       self$dummy_model <- dummy_model
       self$p.adjust <- p.adjust
       self$imputed_proteins <- imputed_proteins
+      self$E <- E
+      self$weights <- weights
+      self$observed <- observed
+      self$annotation <- annotation
+      self$formula <- formula
     },
     #' @description
     #' return model coefficient table in long format
@@ -825,9 +940,11 @@ ContrastsLimma <- R6::R6Class(
           diff_i <- fit2$coefficients[, i]
           se_i <- sigma_raw * fit2$stdev.unscaled[, i]
           t_raw <- diff_i / se_i
-          p_raw <- 2 * pt(abs(t_raw), df = df_raw, lower.tail = FALSE)
+          # proteins without residual degrees of freedom get NA p-values and intervals
+          df_test <- ifelse(df_raw > 0, df_raw, NA_real_)
+          p_raw <- 2 * pt(abs(t_raw), df = df_test, lower.tail = FALSE)
           alpha <- 0.05
-          prqt <- -qt(alpha / 2, df = df_raw)
+          prqt <- -qt(alpha / 2, df = df_test)
 
           df_i$diff <- diff_i
           df_i$std.error <- se_i
@@ -861,7 +978,7 @@ ContrastsLimma <- R6::R6Class(
       contrast_result <- dplyr::ungroup(contrast_result)
       self$contrast_result <- contrast_result
 
-      stopifnot(all(super$column_description()$column_name %in% colnames(contrast_result)))
+      .stop_if_missing_columns(contrast_result, super$column_description()$column_name, "return contrasts")
       return(contrast_result)
     }
   )

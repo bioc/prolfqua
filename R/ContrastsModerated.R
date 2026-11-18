@@ -75,6 +75,9 @@ ContrastsModerated <- R6::R6Class(
       p.adjust = prolfqua::adjust_p_values,
       variance_floor = NULL
     ) {
+      if (!inherits(Contrast, "ContrastsInterface")) {
+        abort_bad_argument("Contrast", "be a ContrastsInterface object")
+      }
       self$Contrast <- Contrast
       self$subject_id <- Contrast$subject_id
       self$model_name <- model_name
@@ -108,7 +111,7 @@ ContrastsModerated <- R6::R6Class(
       # modelName and estimate_type pass through from the wrapped contrast
       # unchanged; the moderated-Wald-test wording belongs in the methods text,
       # not in the per-row model identity.
-      stopifnot(all(super$column_description()$column_name %in% colnames(contrast_result)))
+      .stop_if_missing_columns(contrast_result, super$column_description()$column_name, "return contrasts")
 
       return(contrast_result)
     }

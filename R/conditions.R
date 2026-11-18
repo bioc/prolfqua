@@ -32,7 +32,7 @@ abort_missing_columns <- function(cols, data_nm = "data") {
   rlang::abort(
     c(
       "Required columns are missing.",
-      x = sprintf("Missing from `%s`: %s.", data_nm, paste(cols, collapse = ", "))
+      x = sprintf("Missing from `%s`: %s.", data_nm, toString(cols))
     ),
     class = c("prolfqua_error_missing_column", "prolfqua_error_bad_argument", "prolfqua_error")
   )
@@ -47,4 +47,136 @@ abort_invalid_config <- function(msg) {
     c("Invalid configuration.", x = msg),
     class = c("prolfqua_error_invalid_configuration", "prolfqua_error")
   )
+}
+
+# Informative messages ----
+
+#' Inform the user, unless silenced with `options(prolfqua.verbose = FALSE)`
+#'
+#' Signals an `rlang` message of class `prolfqua_message`, so applications can
+#' route prolfqua's messages to their own log by class.
+#' @param ... pasted together into the message, as in `message()`
+#' @keywords internal
+#' @noRd
+inform_prolfqua <- function(...) {
+  if (isTRUE(getOption("prolfqua.verbose", TRUE))) {
+    rlang::inform(paste0(...), class = "prolfqua_message")
+  }
+  invisible(NULL)
+}
+
+#' Abort with a prolfqua error
+#'
+#' Like `stop()`: the arguments are pasted into the message. The condition has
+#' class `prolfqua_error`, plus any classes given in `class`.
+#' @param ... pasted together into the message
+#' @param class additional condition classes, most specific first
+#' @param call the call shown in the error message; defaults to the caller
+#' @keywords internal
+#' @noRd
+abort_prolfqua <- function(..., class = NULL, call = rlang::caller_env()) {
+  rlang::abort(paste0(...), class = c(class, "prolfqua_error"), call = call)
+}
+
+#' Match a case-sensitive choice exactly and retain prolfqua's error classes
+#' @param arg character choice
+#' @param values allowed choices
+#' @param arg_nm argument name for the error
+#' @noRd
+#' @srrstats {G1.4a} All 107 previously undocumented top-level internal functions now have roxygen and @noRd blocks.
+#' @srrstats {G2.3} Fixed choices are checked and builder help explicitly documents case sensitivity.
+#' @srrstats {G2.3a} Exact arg_match is used here; legacy fixed-choice selectors use match.arg.
+.arg_match_prolfqua <- function(arg, values, arg_nm) {
+  if (!is.character(arg) || length(arg) != 1L || is.na(arg)) {
+    abort_bad_argument(arg_nm, "be one character string")
+  }
+  tryCatch(
+    rlang::arg_match(arg, values = values, error_arg = arg_nm),
+    error = function(e) abort_bad_argument(arg_nm, paste0("be one of: ", toString(values)), parent = e)
+  )
+}
+
+#' Parse a model formula with a classed argument error
+#' @param modelstr one formula string or a formula
+#' @noRd
+#' @srrstatsTODO {G2.0} Formula and scalar lengths are checked here, and tidyMS_power_fdr.R checks all planning
+#'   input lengths; limit: not all exported controls have been audited.
+#' @srrstatsTODO {G2.6} Strategies accept formula objects and strings; limit: specialized vector classes are not fully
+#'   tested.
+.as_model_formula <- function(modelstr) {
+  is_string <- is.character(modelstr) && length(modelstr) == 1 && !is.na(modelstr) && grepl("~", modelstr, fixed = TRUE)
+  if (!(inherits(modelstr, "formula") || is_string)) {
+    abort_bad_argument("modelstr", "be a formula or a single string containing `~`")
+  }
+  tryCatch(
+    as.formula(modelstr),
+    error = function(e) abort_bad_argument("modelstr", "be a valid model formula", parent = e)
+  )
+}
+
+#' Require named contrast expressions
+#' @param contrasts named character vector
+#' @noRd
+.assert_named_contrasts <- function(contrasts) {
+  valid <- all(
+    is.character(contrasts),
+    length(contrasts) > 0,
+    !anyNA(contrasts),
+    !is.null(names(contrasts)),
+    !anyNA(names(contrasts)),
+    all(nzchar(names(contrasts)))
+  )
+  if (!valid) {
+    abort_bad_argument("contrasts", "be a nonempty named character vector without missing values")
+  }
+}
+
+#' Validate the data and configured response at input boundaries
+#' @param data input data frame
+#' @param config AnalysisConfiguration
+#' @noRd
+#' @srrstatsTODO {G2.1} LFQData/setup_analysis check data, configuration and response types; tidyMS_power_fdr.R
+#'   rejects non-real numeric inputs and matrices; limit: the API audit is incomplete.
+#' @srrstatsTODO {G2.4b} Numeric responses/counts are required and limma explicitly converts; no general conversion
+#'   policy.
+#' @srrstatsTODO {G2.12} Nonnumeric responses including lists are rejected; limit: other list columns lack a complete
+#'   contract.
+#' @srrstatsTODO {G5.8} Tests cover invalid types, designs and sparse inputs; core empty/all-NA/constant cases are
+#'   incomplete.
+.assert_response_data <- function(data, config) {
+  if (!is.data.frame(data)) {
+    abort_bad_argument("data", "be a data frame")
+  }
+  if (!inherits(config, "AnalysisConfiguration")) {
+    abort_invalid_config("`config` must be an AnalysisConfiguration.")
+  }
+  response <- config$get_response()
+  if (length(response) != 1 || !response %in% names(data)) {
+    abort_missing_columns(response %||% "response")
+  }
+  if (!is.numeric(data[[response]])) {
+    abort_bad_argument("response", paste0("be numeric (column `", response, "`)"))
+  }
+}
+
+#' Validate simulator size and missingness weight
+#' @param Nprot positive whole number of proteins
+#' @param weight_missing one number in [0, 1]
+#' @noRd
+#' @srrstatsTODO {G2.2} Scalar simulation arguments are enforced; limit: some thresholds and weights still need length
+#'   checks.
+.assert_simulation_args <- function(Nprot, weight_missing) {
+  if (!.is_finite_number(Nprot) || !all(Nprot > 0, Nprot == floor(Nprot))) {
+    abort_bad_argument("Nprot", "be one positive whole number")
+  }
+  if (!.is_finite_number(weight_missing) || !all(weight_missing >= 0, weight_missing <= 1)) {
+    abort_bad_argument("weight_missing", "be one finite number in [0, 1]")
+  }
+}
+
+#' Test whether a value is one finite real number
+#' @param x value to test
+#' @noRd
+.is_finite_number <- function(x) {
+  is.numeric(x) && length(x) == 1 && is.finite(x)
 }

@@ -104,7 +104,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},
@@ -146,6 +148,7 @@ Other preprocessing:
 
 Other stats:
 \code{\link[=compute_pooled]{compute_pooled()}},
+\code{\link[=fdr_sig_level]{fdr_sig_level()}},
 \code{\link[=lfq_power_t_test_proteins]{lfq_power_t_test_proteins()}},
 \code{\link[=lfq_power_t_test_quantiles_V2]{lfq_power_t_test_quantiles_V2()}},
 \code{\link[=plot_stat_density]{plot_stat_density()}},
@@ -153,6 +156,7 @@ Other stats:
 \code{\link[=plot_stat_violin]{plot_stat_violin()}},
 \code{\link[=plot_stat_violin_median]{plot_stat_violin_median()}},
 \code{\link[=plot_stdv_vs_mean]{plot_stdv_vs_mean()}},
+\code{\link[=power_fdr_prior_n]{power_fdr_prior_n()}},
 \code{\link[=summarize_stats]{summarize_stats()}}
 
 Other summary:

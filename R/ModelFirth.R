@@ -3,7 +3,7 @@
 #'
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("logistf", quietly = TRUE)
 #' istar <- prolfqua::sim_lfq_data_protein_config(Nprot = 10, with_missing = TRUE,
 #'   weight_missing = 0.5, seed = 3)
 #' istar$data <- prolfqua::encode_bin_resp(LFQData$new(istar$data, istar$config))
@@ -70,7 +70,7 @@ ModelFirth <- R6::R6Class(
           object$ci.upper,
           chi2,
           object$prob,
-          ifelse(object$method.ci == "Wald", 1, ifelse(object$method.ci == "-", 3, 2))
+          dplyr::case_when(object$method.ci == "Wald" ~ 1, object$method.ci == "-" ~ 3, .default = 2)
         )
         dimnames(out) <- list(
           names(object$coefficients),
@@ -80,7 +80,7 @@ ModelFirth <- R6::R6Class(
         return(out)
       }
 
-      model_coeff <- self$models$model_df |>
+      model_coeff <- .model_fits(self) |>
         dplyr::mutate(!!"Coeffs_model" := purrr::map(!!sym(lmermodel), .coef_df))
       model_coeff <- model_coeff |>
         dplyr::select(!!!syms(self$subject_id), !!sym("Coeffs_model"), isSingular, nr_coef)
@@ -90,14 +90,15 @@ ModelFirth <- R6::R6Class(
     #' @description
     #' return anova table
     get_anova = function() {
-      warning("method not implemented!")
+      warning("ModelFirth$get_anova is not implemented.")
       return(NULL)
     },
     #' @description
     #' histogram of ANOVA results
-    #' @param what show either "Pr..F." or "FDR.Pr..F."
-    anova_histogram = function(what = c("p.value", "FDR")) {
-      warning("not implemented")
+    #' @param what one case-sensitive choice: "p.value" (default) or "FDR".
+    anova_histogram = function(what = "p.value") {
+      what <- .arg_match_prolfqua(what, c("p.value", "FDR"), "what")
+      warning("ModelFirth$anova_histogram is not implemented.")
       return(NULL)
     }
   ),

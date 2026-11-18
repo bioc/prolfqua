@@ -9,19 +9,22 @@
 # shared helper .stamp_facade_identity() is defined there and used here as a
 # package-internal function.
 
-# If the caller-supplied modelstr has no random-effect bars, append
-# (1 | <deepest child hierarchy key>) + (1 | <sample name>) derived from the
-# LFQData. Caller-supplied random effects are left untouched.
+#' If the caller-supplied modelstr has no random-effect bars, append
+#'
+#' (1 | <deepest child hierarchy key>) + (1 | <sample name>) derived from the
+#' LFQData. Caller-supplied random effects are left untouched.
+#' @param modelstr right-hand-side model formula string
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @noRd
 .augment_lmer_nested_modelstr <- function(modelstr, lfqdata) {
-  if (grepl("\\|", modelstr)) {
+  if (grepl("|", modelstr, fixed = TRUE)) {
     return(modelstr)
   }
   child_keys <- setdiff(lfqdata$hierarchy_keys(), lfqdata$subject_id())
   if (length(child_keys) == 0) {
-    stop(
+    abort_prolfqua(
       "ContrastsLmerNestedFacade: cannot derive random effects - ",
-      "no child hierarchy below subject_id().",
-      call. = FALSE
+      "no child hierarchy below subject_id()."
     )
   }
   deepest_child <- child_keys[length(child_keys)]
@@ -45,7 +48,7 @@
 #'
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' istar <- sim_lfq_data_peptide_config()
 #' lfqdata <- LFQData$new(istar$data, istar$config)
 #' lfqdata <- lfqdata$get_Transformer()$log2()$lfq
@@ -341,8 +344,14 @@ ContrastsBinomialFirthNestedFacade <- R6::R6Class(
 )
 
 
-# Shared pipeline of the detection-count facades: collapse child detection into
-# counts per parent and sample, fit `strategy`, and moderate the Wald contrasts.
+#' Shared pipeline of the detection-count facades: collapse child detection into
+#'
+#' counts per parent and sample, fit `strategy`, and moderate the Wald contrasts.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param strategy modelling strategy
+#' @param contrasts named character vector of contrast expressions
+#' @param binomial_bound bound applied to binomial detection estimates
+#' @noRd
 .fit_detection_counts <- function(lfqdata, strategy, contrasts, binomial_bound) {
   counts <- .summarize_detection_counts(.prepare_detection_lfqdata(lfqdata))
   model <- build_model(

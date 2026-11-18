@@ -1,35 +1,47 @@
 # ContrastsFacades -----
 
+#' Require matching input and output hierarchy levels
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param facade_name facade identity for messages and results
+#' @noRd
 .assert_aggregated_facade_input <- function(lfqdata, facade_name) {
   subject_id <- lfqdata$subject_id()
   hierarchy_keys <- lfqdata$hierarchy_keys()
   if (!identical(subject_id, hierarchy_keys)) {
-    stop(
+    abort_prolfqua(
       facade_name,
       " requires aggregated LFQData. ",
       "`lfqdata$subject_id()` must equal `lfqdata$hierarchy_keys()`. ",
-      "Aggregate first.",
-      call. = FALSE
+      "Aggregate first."
     )
   }
 }
 
+#' Require child-level input below the modelling subject
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param facade_name facade identity for messages and results
+#' @noRd
 .assert_nested_facade_input <- function(lfqdata, facade_name) {
   subject_id <- lfqdata$subject_id()
   hierarchy_keys <- lfqdata$hierarchy_keys()
   if (!(all(subject_id %in% hierarchy_keys) && length(subject_id) < length(hierarchy_keys))) {
-    stop(
+    abort_prolfqua(
       facade_name,
       " requires LFQData with additional hierarchy below `subject_id()`. ",
       "`lfqdata$subject_id()` must be a strict subset of ",
-      "`lfqdata$hierarchy_keys()`. Do not aggregate first.",
-      call. = FALSE
+      "`lfqdata$hierarchy_keys()`. Do not aggregate first."
     )
   }
 }
 
-# Every group a contrast names (a factor key followed by a level, e.g. group_A)
-# must have samples with a measured response.
+#' Every group a contrast names (a factor key followed by a level, e.g. group_A)
+#'
+#' must have samples with a measured response.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param contrasts named character vector of contrast expressions
+#' @noRd
+#' @srrstatsTODO {G2.13} Facades reject groups without measured responses; limit: missing identifier/predictor keys are
+#'   not checked.
 .assert_contrast_groups <- function(lfqdata, contrasts) {
   factor_keys <- lfqdata$factor_keys()
   data <- lfqdata$data_long()
@@ -50,16 +62,22 @@
           "name only groups with samples; contrast `%s` (%s) names %s",
           contrast_name,
           contrasts[[i]],
-          paste(without_data, collapse = ", ")
+          toString(without_data)
         ),
-        not = paste("groups with samples:", paste(with_data, collapse = ", "))
+        not = paste("groups with samples:", toString(with_data))
       )
     }
   }
 }
 
-# Compute protein × contrast pairs present in input but absent from output.
-# Returns a data.frame with hierarchy columns + `contrast_col`, or 0 rows if nothing missing.
+#' Compute protein × contrast pairs present in input but absent from output.
+#'
+#' Returns a data.frame with hierarchy columns + `contrast_col`, or 0 rows if nothing missing.
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @param contrast_names names of the requested contrasts
+#' @param contrast_result computed contrast table
+#' @param contrast_col column identifying contrasts
+#' @noRd
 .compute_missing <- function(lfqdata, contrast_names, contrast_result, contrast_col = "contrast") {
   subject_id <- lfqdata$subject_id()
   all_subjects <- lfqdata$data_long() |>
@@ -72,11 +90,15 @@
   dplyr::anti_join(expected, estimated, by = c(subject_id, contrast_col))
 }
 
-# Stamp the selected facade key as the row's model identity. `modelName` is the
-# single identity column: the inner contrast classes set it to their own model
-# name (e.g. "WaldTest", "limma") and this overwrites it with the facade key
-# (e.g. "rfit", "lm_impute") that the user actually selected. Rescue/imputation
-# state is carried separately in `estimate_type`, set by the inner classes.
+#' Stamp the selected facade key as the row's model identity. `modelName` is the
+#'
+#' single identity column: the inner contrast classes set it to their own model
+#' name (e.g. "WaldTest", "limma") and this overwrites it with the facade key
+#' (e.g. "rfit", "lm_impute") that the user actually selected. Rescue/imputation
+#' state is carried separately in `estimate_type`, set by the inner classes.
+#' @param res contrast result table
+#' @param facade_name facade identity for messages and results
+#' @noRd
 .stamp_facade_identity <- function(res, facade_name) {
   res$modelName <- facade_name
   dplyr::relocate(res, dplyr::any_of(c("modelName", "estimate_type")))
@@ -624,7 +646,7 @@ ContrastsRfitImputeFacade <- R6::R6Class(
 #' @return An R6 class generator.
 #' @export
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("logistf", quietly = TRUE)
 #' istar <- sim_lfq_data_protein_config(Nprot = 20, weight_missing = 0.5)
 #' lfqdata <- LFQData$new(istar$data, istar$config)
 #' contrasts <- c("A_vs_Ctrl" = "group_A - group_Ctrl")
@@ -744,6 +766,8 @@ ContrastsDEqMSVoomFacade <- R6::R6Class(
 
 .facade_registry_env <- new.env(parent = emptyenv())
 
+#' Create the built-in method-to-facade registry
+#' @noRd
 .seed_facade_registry <- function() {
   entries <- list(
     lm = list(class = "ContrastsLMFacade", needs = "aggregated"),
@@ -809,18 +833,19 @@ ContrastsDEqMSVoomFacade <- R6::R6Class(
 #' #                           needs = "aggregated", package = "prolfquasaint",
 #' #                           needs_saint_annotation = TRUE)
 register_facade <- function(name, class, needs, package = "prolfqua", needs_saint_annotation = FALSE, ...) {
-  stopifnot(
-    is.character(name),
-    length(name) == 1,
-    nzchar(name),
-    is.character(class),
-    length(class) == 1,
-    nzchar(class),
-    is.character(needs),
-    length(needs) == 1,
-    is.character(package),
-    length(package) == 1
-  )
+  is_string <- function(x) is.character(x) && length(x) == 1 && !is.na(x)
+  if (!(is_string(name) && nzchar(name))) {
+    abort_bad_argument("name", "be one non-empty string")
+  }
+  if (!(is_string(class) && nzchar(class))) {
+    abort_bad_argument("class", "be one non-empty string")
+  }
+  if (!is_string(needs)) {
+    abort_bad_argument("needs", "be one character string")
+  }
+  if (!is_string(package)) {
+    abort_bad_argument("package", "be one string")
+  }
   if (!needs %in% c("aggregated", "nested")) {
     abort_bad_argument("needs", 'be "aggregated" or "nested"', not = needs)
   }
@@ -883,7 +908,7 @@ lookup_facade <- function(name) {
 #' head(names(list_facades()))
 list_facades <- function() {
   names_ <- ls(envir = .facade_registry_env, sorted = TRUE)
-  out <- lapply(names_, function(nm) get(nm, envir = .facade_registry_env, inherits = FALSE))
+  out <- lapply(names_, get, envir = .facade_registry_env, inherits = FALSE)
   names(out) <- names_
   out
 }

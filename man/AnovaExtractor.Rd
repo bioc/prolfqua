@@ -90,7 +90,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},
@@ -108,9 +110,9 @@ Other modelling:
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
   \describe{
-    \item{\code{test}}{statistical test type ("F", "Chisq", etc.)}
+    \item{\code{test}}{one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".}
 
-    \item{\code{col_pval}}{p-value column name in ANOVA output}
+    \item{\code{col_pval}}{p-value column name in ANOVA output; empty for "Cp", which has no p-value.}
   }
   \if{html}{\out{</div>}}
 }
@@ -135,7 +137,8 @@ Other modelling:
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{test}}{statistical test type}
+      \item{\code{test}}{one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".
+The fitted model's ANOVA method must support the chosen test.}
     }
     \if{html}{\out{</div>}}
   }

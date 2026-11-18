@@ -162,9 +162,9 @@ list_to_ContrastConfiguration <- function(dd) {
   fields <- names(R6_extract_values(config))
   unknown <- setdiff(names(dd), fields)
   if (length(unknown) > 0) {
-    stop(
+    abort_prolfqua(
       "Not ContrastConfiguration fields: ",
-      paste(unknown, collapse = ", ")
+      toString(unknown)
     )
   }
   for (i in names(dd)) {

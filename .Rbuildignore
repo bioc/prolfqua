@@ -19,10 +19,8 @@ R/tidyMS_stanr\.R
 ^\.lintr$
 ^\.claude$
 ^\.vscode$
-^BinaryFiles$
 ^CODE_OF_CONDUCT\.md$
 ^Makefile$
-^conda$
 ^TODO\.md$
 ^data-raw$
 ^CLAUDE\.md$
@@ -39,3 +37,4 @@ R/tidyMS_stanr\.R
 ^AGENTS\.md$
 ^CLAUDE\.md$
 ^vignettes/articles$
+^srr$

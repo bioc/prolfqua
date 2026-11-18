@@ -13,7 +13,7 @@
 #' @keywords internal
 #' @noRd
 parse_contrast_sides <- function(contrasts) {
-  tt <- contrasts[grep("-", contrasts)]
+  tt <- contrasts[grep("-", contrasts, fixed = TRUE)]
   tt <- tibble::tibble(contrast = names(tt), rhs = tt)
   tt |>
     dplyr::mutate(rhs = gsub("[` ]", "", rhs)) |>
@@ -26,8 +26,11 @@ parse_contrast_sides <- function(contrasts) {
     )
 }
 
+#' Represent observed factor-level combinations as coefficient weights
+#' @param m fitted regression model
+#' @noRd
 .model_coeff_matrix <- function(m) {
-  if ("lmerModLmerTest" %in% class(m)) {
+  if (inherits(m, "lmerModLmerTest")) {
     data <- m@frame
     coeffs <- coefficients(summary(m))[, "Estimate"]
   } else {
@@ -54,18 +57,33 @@ parse_contrast_sides <- function(contrasts) {
 }
 
 
+#' Average combination weights for each individual factor level
+#' @param coeff_matrix factor-combination coefficient weights
+#' @noRd
 .coeff_weights_factor_levels <- function(coeff_matrix) {
   row_name_parts <- stringi::stri_split_fixed(rownames(coeff_matrix), ":")
   get_coeffs <- function(factor_level) {
     idx <- which(vapply(row_name_parts, function(x) factor_level %in% x, logical(1)))
-    x <- as.list(apply(coeff_matrix[idx, , drop = FALSE], 2, mean))
+    x <- as.list(colMeans(coeff_matrix[idx, , drop = FALSE]))
     x <- tibble::as_tibble(x)
     tibble::add_column(x, "factor_level" = factor_level, .before = 1)
   }
   purrr::map_df(unique(unlist(row_name_parts)), get_coeffs)
 }
 
-#' get linfct from model
+#' Get group-level linear functions from a fitted model
+#'
+#' @details The fitted model supplies its coefficient names and observed
+#'   categorical factor combinations. Each combination is expressed as weights
+#'   on the fitted coefficients; weights for an individual factor level are
+#'   averaged equally over the observed combinations containing that level.
+#'   Thus \code{linfct_factors} describes marginal factor-level means and
+#'   \code{linfct_interactions} describes cell means. With treatment coding,
+#'   a reference-level mean includes the intercept; a non-reference mean also
+#'   includes its treatment coefficient. The \emph{Under the hood} article
+#'   shows a complete \code{~ A * B} example. These helpers assume categorical
+#'   predictors and the usual intercept-based coding; they are not a general
+#'   marginal-means implementation for continuous predictors or arbitrary coding.
 #' @param m linear model
 #' @family modelling
 #' @export
@@ -100,6 +118,8 @@ parse_contrast_sides <- function(contrasts) {
 #' m <- lm(Y ~ Condition, data = xx)
 #' linfct_from_model(m)
 #'
+#' @srrstats {RE1.1} The article and linfct details show treatment-coded designs, cell means and tested interaction
+#'   weights.
 linfct_from_model <- function(m, as_list = TRUE) {
   coeff_result <- .model_coeff_matrix(m)
   sorted_coeff_matrix <- coeff_result$coeff_matrix[order(rownames(coeff_result$coeff_matrix)), ]
@@ -121,7 +141,15 @@ linfct_from_model <- function(m, as_list = TRUE) {
 }
 
 
-#' linfct_matrix_contrasts
+#' Convert named group-mean contrasts to coefficient weights
+#'
+#' @details Rows of \code{linfct} represent group or interaction means and
+#'   columns represent fitted coefficients. Contrast expressions combine these
+#'   rows, so \code{"group_A - group_Ctrl"} becomes their row difference.
+#'   Quote interaction names containing colons with backticks. Expressions may
+#'   reference earlier named contrasts. A row naming a group unavailable in a
+#'   particular model is dropped with a warning. The returned matrix has one
+#'   row per estimable contrast and coefficient columns in model order.
 #'
 #' @export
 #' @param linfct linear functions as created by linfct_from_model
@@ -186,7 +214,7 @@ linfct_matrix_contrasts <- function(linfct, contrasts, p.message = FALSE) {
     res <- data |> dplyr::select(-all_of(cnams))
     if (length(failures) > 0) {
       failure_df <- dplyr::bind_rows(failures)
-      failure_names <- paste(failure_df$contrast, collapse = ", ")
+      failure_names <- toString(failure_df$contrast)
       failure_messages <- unique(failure_df$message)
       failure_summary <- paste(utils::head(failure_messages, 3), collapse = "; ")
       msg <- sprintf(
@@ -210,13 +238,15 @@ linfct_matrix_contrasts <- function(linfct, contrasts, p.message = FALSE) {
 
 # Computing contrasts helpers -----
 
-# compute contrasts for full models
-# @param m linear model generated using lm
-# @param linfct linear function
-# @param strategy optional strategy for df and sigma computation
-# @param coef coefficients vector, default from model
-# @param Sigma.hat variance-covariance matrix, default from model
-# @param confint which confidence interval to determine
+#' compute contrasts for full models
+#'
+#' @param m linear model generated using lm
+#' @param linfct linear function
+#' @param strategy optional strategy for df and sigma computation
+#' @param coef coefficients vector, default from model
+#' @param Sigma.hat variance-covariance matrix, default from model
+#' @param confint which confidence interval to determine
+#' @noRd
 .compute_contrast <- function(m, linfct, strategy = NULL, coef = coefficients(m), Sigma.hat = vcov(m), confint = 0.95) {
   if (is.null(strategy)) {
     df <- df.residual(m)
@@ -276,6 +306,8 @@ linfct_matrix_contrasts <- function(linfct, contrasts, p.message = FALSE) {
 #' compute_contrast(m, linfct, confint = 0.95)
 #' compute_contrast(m, linfct, confint = 0.99)
 #'
+#' @srrstatsTODO {G3.0} Covariance compatibility uses all.equal; limit: exact floating comparisons remain elsewhere.
+#' @srrstats {RE7.1} Tests recover exact group differences and exact paired-design means.
 compute_contrast <- function(m, linfct, confint = 0.95) {
   Sigma.hat <- vcov(m)
 
@@ -291,8 +323,12 @@ compute_contrast <- function(m, linfct, confint = 0.95) {
       linfct_v_red <- linfct_v[, nam, drop = FALSE]
       Sigma.hat_red <- Sigma.hat[nam, nam, drop = FALSE]
       coef_red <- coef[nam]
-      stopifnot(all.equal(colnames(linfct_v_red), colnames(Sigma.hat_red)))
-      stopifnot(all.equal(colnames(linfct_v_red), names(coef_red)))
+      if (
+        !isTRUE(all.equal(colnames(linfct_v_red), colnames(Sigma.hat_red))) ||
+          !isTRUE(all.equal(colnames(linfct_v_red), names(coef_red)))
+      ) {
+        abort_prolfqua("internal error: linfct columns do not match the model coefficients")
+      }
       res[[i]] <- .compute_contrast(m, linfct_v_red, coef = coef_red, Sigma.hat = Sigma.hat_red, confint = confint)
     } else {
       res[[i]] <- data.frame(
@@ -320,7 +356,7 @@ compute_contrast <- function(m, linfct, confint = 0.95) {
 #' @family modelling
 #' @export
 #' @keywords internal
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #'
 #' mb <- sim_make_model_lmer("interaction")
 #' summary(mb)
@@ -334,6 +370,7 @@ compute_contrast <- function(m, linfct, confint = 0.95) {
 #' summary(mb)
 #'
 compute_lmer_contrast <- function(model, linfct, ddf = c("Satterthwaite", "Kenward-Roger")) {
+  rlang::check_installed(c("lme4", "lmerTest"), reason = "for mixed model contrasts.")
   ddf <- match.arg(ddf)
   if (nrow(linfct) == 0L) {
     # `linfct_matrix_contrasts()` drops a contrast whose coefficients this
@@ -418,7 +455,6 @@ pivot_model_contrasts_to_wide <- function(
 #'         subject_id = "protein_Id",
 #'         contrastfun = prolfqua::compute_contrast)
 contrasts_linfct <- function(models, linfct, subject_id = "protein_Id", contrastfun = prolfqua::compute_lmer_contrast) {
-  message("contrasts_linfct")
   modelcol <- "linear_model"
 
   # Normalize: if linfct is a matrix, replicate it for each model
@@ -426,7 +462,7 @@ contrasts_linfct <- function(models, linfct, subject_id = "protein_Id", contrast
     linfct <- rep(list(linfct), nrow(models))
   }
   if (!is.list(linfct) || length(linfct) != nrow(models)) {
-    stop("linfct must be either a matrix or a list of length == nrow(models)")
+    abort_prolfqua("linfct must be either a matrix or a list of length == nrow(models)")
   }
 
   interaction_models <- vector(mode = "list", length = nrow(models))
@@ -448,14 +484,14 @@ contrasts_linfct <- function(models, linfct, subject_id = "protein_Id", contrast
       " of ",
       nrow(interaction_model_matrix),
       " proteins with failed contrasts: ",
-      paste(failed_ids, collapse = ", "),
+      toString(failed_ids),
       call. = FALSE
     )
   }
 
   contrasts <- interaction_model_matrix[!failed, ] |>
     dplyr::select(all_of(c(subject_id, "contrast"))) |>
-    tidyr::unnest(cols = c("contrast"))
+    tidyr::unnest(cols = "contrast")
 
   # take sigma and df from somewhere else.
   model_infos <- models |>

@@ -1,5 +1,17 @@
-# Functions - Plotting ----
-# Plot peptide and fragments
+#' Functions - Plotting ----
+#'
+#' Plot peptide and fragments
+#' @param data long-format measurement data frame
+#' @param protein_name protein identifier displayed as the plot title
+#' @param sample sample identifier column
+#' @param intensity intensity column
+#' @param peptide peptide identifier column
+#' @param fragment fragment identifier column
+#' @param factor explanatory-variable column
+#' @param isotope_label column identifying isotope labels
+#' @param log_y use a logarithmic intensity axis
+#' @param show.legend show the plot legend
+#' @noRd
 plot_hierarchies_line_default <- function(
   data,
   protein_name,
@@ -85,16 +97,29 @@ plot_hierarchies_line <- function(res, protein_name, lfqdata, show.legend = FALS
 }
 
 
+#' Attach sample annotations to the median-polish protein estimates
+#' @param data long-format measurement data frame
+#' @param medpolishRes median-polish estimates and residuals
+#' @param sample_name column identifying samples
+#' @param factor_keys configured explanatory-variable columns
+#' @param file_name column identifying the input measurement files
+#' @param isotope_label column identifying isotope labels
+#' @noRd
 .reestablish_condition <- function(data, medpolishRes, sample_name, factor_keys, file_name, isotope_label) {
   xx <- data |>
-    dplyr::select(c(sample_name, factor_keys, file_name, isotope_label)) |>
+    dplyr::select(dplyr::all_of(c(sample_name, factor_keys, file_name, isotope_label))) |>
     dplyr::distinct()
   res <- dplyr::inner_join(xx, medpolishRes, by = sample_name)
   res
 }
 
 
-# Tukey's median polish estimate of e.g. a protein from its feature (peptide) intensities, one row per sample.
+#' Tukey's median polish estimate of e.g. a protein from its feature (peptide) intensities, one row per sample.
+#' @param pdata long-format measurement table
+#' @param response name of the numeric response column
+#' @param feature child-feature identifier column
+#' @param sample_name column identifying samples
+#' @noRd
 .medpolish_estimate <- function(pdata, response, feature, sample_name) {
   wide <- pdata |>
     dplyr::select(all_of(c(sample_name, feature, response))) |>
@@ -104,6 +129,13 @@ plot_hierarchies_line <- function(res, protein_name, lfqdata, show.legend = FALS
   tibble(!!sample_name := names(X$col), medpolish = X$col + X$overall)
 }
 
+#' Estimate protein intensities by robust peptide regression
+#' @param pdata long-format measurement table
+#' @param response name of the numeric response column
+#' @param feature child-feature identifier column
+#' @param samples name of the sample identifier column
+#' @param maxIt maximum robust-regression iterations
+#' @noRd
 .rlm_estimate <- function(pdata, response, feature, samples = "samples", maxIt = 20) {
   data <- pdata |>
     select(all_of(c(samples, feature, response))) |>
@@ -158,7 +190,7 @@ plot_hierarchies_line <- function(res, protein_name, lfqdata, show.legend = FALS
     fit <- .lm.fit(X, y)
     id <- fit$coefficients != 0
     X <- X[, id, drop = FALSE]
-    if (!any(!id)) break
+    if (all(id)) break
   }
   ## Last step is always rlm if X > has some columns left
   if (ncol(X) > 0) {
@@ -190,6 +222,15 @@ plot_hierarchies_line <- function(res, protein_name, lfqdata, show.legend = FALS
   return(finalize(res))
 }
 
+#' Count measured children per parent and sample after aggregation
+#' @param data long-format measurement data frame
+#' @param aggregated_data protein-level estimates returned by aggregation
+#' @param hierarchy_keys_depth identifier columns at the output depth
+#' @param file_name column identifying the input measurement files
+#' @param response name of the numeric response column
+#' @param nr_children_col column tracking measured child-feature counts
+#' @param newconfig configuration of the aggregated output
+#' @noRd
 .add_nr_children <- function(
   data,
   aggregated_data,
@@ -262,8 +303,7 @@ estimate_intensity <- function(lfqdata, method = c("medpolish", "rlm")) {
     group_by(across(all_of(hkeysd))) |>
     nest()
 
-  pb <- progress::progress_bar$new(total = nrow(xnested))
-  message("starting aggregation")
+  pb <- .make_progress(nrow(xnested))
   res <- purrr::map(xnested$data, function(d) {
     pb$tick()
     .reestablish_condition(d, estimate(d), sname, fkeys, fname, iso)
@@ -324,7 +364,7 @@ plot_estimate <- function(lfqdata, lfqdata_agg, show.legend = FALSE) {
   aes_y <- lfqdata_agg$response()
   quant_aes <- aes(x = .data[[sample_name]], y = .data[[aes_y]], group = 1)
 
-  pb <- progress::progress_bar$new(total = nrow(xnested_all))
+  pb <- .make_progress(nrow(xnested_all))
   for (i in seq_len(nrow(xnested_all))) {
     p1 <- plot_hierarchies_line(
       xnested_all$data[[i]],
@@ -555,6 +595,6 @@ rank_peptide_by_intensity <- function(pdata, response, hierarchy_keys) {
     dplyr::mutate(!!rank_column := min_rank(desc(!!sym(summary_column))))
   pdata <- dplyr::inner_join(pdata, ranked, by = hierarchy_keys)
 
-  message("Columns added : ", summary_column, " ", rank_column)
+  inform_prolfqua("Columns added : ", summary_column, " ", rank_column)
   return(pdata)
 }

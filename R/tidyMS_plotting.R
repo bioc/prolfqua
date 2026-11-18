@@ -1,3 +1,9 @@
+#' Decide whether sample counts allow a readable legend
+#' @param pdata long-format measurement table
+#' @param sample_name column identifying samples
+#' @param legend whether to show the plot legend
+#' @param max_legend_samples largest sample count shown in a legend
+#' @noRd
 .show_sample_legend <- function(pdata, sample_name, legend, max_legend_samples) {
   if (is.logical(legend) && length(legend) == 1 && !is.na(legend)) {
     return(legend)
@@ -6,19 +12,27 @@
   n_samples <= max_legend_samples
 }
 
-# Label widths for .truncate_plot_labels() and .suffix_plot_labels(); NULL when max_chars is NULL or not finite.
+#' Label widths for .truncate_plot_labels() and .suffix_plot_labels(); NULL when max_chars is NULL or not finite.
+#' @param labels character plot labels
+#' @param max_chars maximum displayed label width
+#' @param min_chars minimum supported label width
+#' @noRd
 .plot_label_widths <- function(labels, max_chars, min_chars) {
   if (is.null(max_chars) || !is.finite(max_chars)) {
     return(NULL)
   }
   max_chars <- as.integer(max_chars)
   if (max_chars < min_chars) {
-    stop("max_chars must be at least ", min_chars, ".", call. = FALSE)
+    abort_bad_argument("max_chars", paste0("be at least ", min_chars))
   }
   width <- nchar(labels, type = "chars", allowNA = FALSE)
   list(max_chars = max_chars, width = width, too_long = width > max_chars)
 }
 
+#' Shorten long plot labels with an ellipsis
+#' @param labels character plot labels
+#' @param max_chars maximum displayed label width
+#' @noRd
 .truncate_plot_labels <- function(labels, max_chars = 60) {
   labels <- as.character(labels)
   lw <- .plot_label_widths(labels, max_chars, 4)
@@ -36,6 +50,10 @@
   labels
 }
 
+#' Shorten plot labels while preserving distinguishing suffixes
+#' @param labels character plot labels
+#' @param max_chars maximum displayed label width
+#' @noRd
 .suffix_plot_labels <- function(labels, max_chars = 20) {
   labels <- as.character(labels)
   lw <- .plot_label_widths(labels, max_chars, 1)
@@ -49,10 +67,13 @@
 # light gray for missing (NA) cells in ComplexHeatmap output
 .HEATMAP_NA_COL <- "#D3D3D3"
 
-# ggplot2's default discrete colour palette, reproduced with base grDevices so
-# heatmap annotations and PCA can share one colour per factor level without
-# pulling in scales as a direct dependency. hcl(h, l = 65, c = 100) over evenly
-# spaced hues is exactly what scales::hue_pal() returns.
+#' ggplot2's default discrete colour palette, reproduced with base grDevices so
+#'
+#' heatmap annotations and PCA can share one colour per factor level without
+#' pulling in scales as a direct dependency. hcl(h, l = 65, c = 100) over evenly
+#' spaced hues is exactly what scales::hue_pal() returns.
+#' @param n number of colours in the returned palette
+#' @noRd
 .hue_palette <- function(n) {
   if (n < 1) {
     return(character(0))
@@ -60,10 +81,14 @@
   grDevices::hcl(h = seq(15, 375, length.out = n + 1), l = 65, c = 100)[seq_len(n)]
 }
 
-# Deterministic level -> colour map for each (non-numeric) factor column, shared
-# by .heatmap_top_annotation() and plot_pca() so a given group always gets the
-# same colour across the heatmap, na-heatmap, and PCA legends. Without this,
-# ComplexHeatmap assigns random colours to discrete annotations on every call.
+#' Deterministic level -> colour map for each (non-numeric) factor column, shared
+#'
+#' by .heatmap_top_annotation() and plot_pca() so a given group always gets the
+#' same colour across the heatmap, na-heatmap, and PCA legends. Without this,
+#' ComplexHeatmap assigns random colours to discrete annotations on every call.
+#' @param annotation one row of annotations per sample
+#' @param factor_keys configured explanatory-variable columns
+#' @noRd
 .factor_annotation_colors <- function(annotation, factor_keys) {
   cols <- list()
   for (key in factor_keys) {
@@ -77,10 +102,16 @@
   cols
 }
 
-# Build a ComplexHeatmap top annotation from the sample factor columns.
-# ComplexHeatmap aligns the top annotation positionally to the matrix columns
-# (unlike pheatmap's name matching), so the annotation rows must be reordered to
-# match the column order of the matrix handed to Heatmap().
+#' Build a ComplexHeatmap top annotation from the sample factor columns.
+#'
+#' ComplexHeatmap aligns the top annotation positionally to the matrix columns
+#' (unlike pheatmap's name matching), so the annotation rows must be reordered to
+#' match the column order of the matrix handed to Heatmap().
+#' @param annotation one row of annotations per sample
+#' @param factor_keys configured explanatory-variable columns
+#' @param sample_name column identifying samples
+#' @param matrix_colnames sample names in heatmap column order
+#' @noRd
 .heatmap_top_annotation <- function(annotation, factor_keys, sample_name, matrix_colnames) {
   factors <- dplyr::select(annotation, all_of(factor_keys))
   factors <- as.data.frame(factors)
@@ -90,7 +121,14 @@
   ComplexHeatmap::HeatmapAnnotation(df = factors, col = col, show_annotation_name = TRUE)
 }
 
-# Heatmap() arguments shared by plot_heatmap_cor(), plot_heatmap() and plot_raster(); rows arrive already ordered.
+#' Heatmap() arguments shared by plot_heatmap_cor(), plot_heatmap() and plot_raster(); rows arrive already ordered.
+#' @param matrix numeric feature-by-sample matrix
+#' @param name heatmap legend title
+#' @param col heatmap colour mapping
+#' @param top_annotation sample annotation for the heatmap
+#' @param max_sample_label_chars maximum sample label width
+#' @param ... additional arguments passed to the underlying plotting function
+#' @noRd
 .annotated_heatmap <- function(matrix, name, col, top_annotation, max_sample_label_chars, ...) {
   ComplexHeatmap::Heatmap(
     matrix,
@@ -107,8 +145,11 @@
   )
 }
 
-# Green-black-red diverging color function centered at zero, for row z-scored
-# abundance heatmaps. The range is symmetric around zero based on the data.
+#' Green-black-red diverging color function centered at zero, for row z-scored
+#'
+#' abundance heatmaps. The range is symmetric around zero based on the data.
+#' @param matrix numeric feature-by-sample matrix
+#' @noRd
 .abundance_col_fun <- function(matrix) {
   m <- max(abs(matrix), na.rm = TRUE)
   if (!is.finite(m) || m == 0) {
@@ -117,11 +158,14 @@
   circlize::colorRamp2(c(-m, 0, m), c("green", "black", "red"))
 }
 
+#' Compute pairwise heatmap distances from finite values
+#' @param matrix numeric feature-by-sample matrix
+#' @noRd
 .finite_heatmap_dist <- function(matrix) {
   tryCatch(
     {
       distance <- stats::dist(matrix)
-      if (any(!is.finite(distance))) {
+      if (!all(is.finite(distance))) {
         return(NULL)
       }
       distance
@@ -130,6 +174,9 @@
   )
 }
 
+#' Check whether heatmap columns support distance-based clustering
+#' @param matrix numeric feature-by-sample matrix
+#' @noRd
 .can_cluster_heatmap_columns <- function(matrix) {
   if (ncol(matrix) < 2) {
     return(FALSE)
@@ -137,6 +184,9 @@
   !is.null(.finite_heatmap_dist(t(matrix)))
 }
 
+#' Cluster heatmap rows using distances from finite values
+#' @param matrix numeric feature-by-sample matrix
+#' @noRd
 .cluster_heatmap_rows <- function(matrix) {
   if (nrow(matrix) < 3) {
     return(matrix)
@@ -148,8 +198,12 @@
   matrix[stats::hclust(distance)$order, , drop = FALSE]
 }
 
-# White-to-red color function for correlation heatmaps, ranging over the
-# observed values (R-squared lives in [0, 1]).
+#' White-to-red color function for correlation heatmaps, ranging over the
+#'
+#' observed values (R-squared lives in [0, 1]).
+#' @param cres sample correlation matrix
+#' @param R2 show squared correlations
+#' @noRd
 .cor_col_fun <- function(cres, R2 = FALSE) {
   rng <- range(cres, na.rm = TRUE)
   lo <- if (R2) 0 else max(-1, rng[1])
@@ -161,7 +215,9 @@
   circlize::colorRamp2(c(lo, hi), c("white", "red"))
 }
 
-# Sequential blue-yellow-red color function for the raster of raw abundances.
+#' Sequential blue-yellow-red color function for the raster of raw abundances.
+#' @param matrix numeric feature-by-sample matrix
+#' @noRd
 .raster_col_fun <- function(matrix) {
   rng <- stats::quantile(matrix, c(0, 1), na.rm = TRUE)
   if (!all(is.finite(rng)) || rng[1] == rng[2]) {
@@ -228,11 +284,16 @@ plot_intensity_distribution_density <- function(
   legend = NA,
   max_legend_samples = 16
 ) {
-  density_data <- plotly::highlight_key(
-    pdata,
-    key = as.character(pdata[[sample_name]]),
-    group = paste("prolfqua_density", sample_name, sep = "_")
-  )
+  # with plotly, ggplotly() of this plot links the sample curves; without it the plot is static
+  density_data <- if (.has_package("plotly")) {
+    plotly::highlight_key(
+      pdata,
+      key = as.character(pdata[[sample_name]]),
+      group = paste("prolfqua_density", sample_name, sep = "_")
+    )
+  } else {
+    pdata
+  }
   p <- ggplot(
     density_data,
     aes(
@@ -272,8 +333,8 @@ plot_sample_correlation <- function(matrix) {
     upper = "ellipse",
     lower = if (numbers) "number" else "pie",
     lower.col = if (numbers) "black",
-    tl.cex = .6,
-    number.cex = if (numbers) .7 else 1,
+    tl.cex = 0.6,
+    number.cex = if (numbers) 0.7 else 1,
     diag = "u",
     tl.pos = "lt",
     tl.col = "black",
@@ -342,19 +403,19 @@ plot_hierarchies_boxplot <- function(
   }
   p <- p + geom_boxplot()
   if (beeswarm) {
-    if (length(levels(pdata[[nr_children_col]])) > 1) {
-      shape_values <- c(4, rep(16, length(levels(pdata[[nr_children_col]])) - 1))
+    if (nlevels(pdata[[nr_children_col]]) > 1) {
+      shape_values <- c(4, rep(16, nlevels(pdata[[nr_children_col]]) - 1))
     } else {
       shape_values <- 16
     }
+    point_aes <- aes(size = .data[["size"]], shape = .data[[nr_children_col]])
+    points <- if (.has_package("ggbeeswarm")) {
+      ggbeeswarm::geom_quasirandom(point_aes, dodge.width = 0.7)
+    } else {
+      geom_point(point_aes, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.7))
+    }
     p <- p +
-      ggbeeswarm::geom_quasirandom(
-        aes(
-          size = .data[["size"]],
-          shape = .data[[nr_children_col]]
-        ),
-        dodge.width = 0.7
-      ) +
+      points +
       scale_shape_manual(values = shape_values) +
       scale_size_continuous(range = range(pdata$size, na.rm = TRUE))
   }
@@ -407,7 +468,7 @@ plot_hierarchies_boxplot_df <- function(
   newcol <- paste(hierarchy, collapse = "+")
   xnested <- xnested |> tidyr::unite(!!sym(newcol), all_of(hierarchy))
 
-  pb <- progress::progress_bar$new(total = nrow(xnested))
+  pb <- .make_progress(nrow(xnested))
 
   figs <- xnested |>
     dplyr::mutate(
@@ -438,7 +499,7 @@ plot_hierarchies_boxplot_df <- function(
 #' @export
 #' @keywords internal
 #' @family plotting
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_protein_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
@@ -460,6 +521,7 @@ plot_heatmap_cor <- function(
   max_sample_label_chars = 20,
   ...
 ) {
+  rlang::check_installed(c("ComplexHeatmap", "circlize"), reason = "for heatmaps.")
   cres <- cor(matrix, use = "pa")
   if (R2) {
     cres <- cres^2
@@ -499,7 +561,7 @@ plot_heatmap_cor <- function(
 #' @export
 #' @keywords internal
 #' @family plotting
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_protein_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
@@ -518,8 +580,9 @@ plot_heatmap <- function(
   max_sample_label_chars = 20,
   ...
 ) {
+  rlang::check_installed(c("ComplexHeatmap", "circlize"), reason = "for heatmaps.")
   if (nrow(matrix) == 0) {
-    warning("The dataset has :", nrow(matrix), "")
+    warning("plot_heatmap: the dataset has no rows.")
     return(NULL)
   }
 
@@ -565,7 +628,7 @@ plot_heatmap <- function(
 #'
 #' @family plotting
 #' @export
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_protein_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
@@ -587,8 +650,9 @@ plot_raster <- function(
   max_sample_label_chars = 20,
   ...
 ) {
+  rlang::check_installed(c("ComplexHeatmap", "circlize"), reason = "for heatmaps.")
   if (nrow(matrix) <= 1) {
-    warning("The dataset has :", nrow(matrix), "")
+    warning("plot_raster: the dataset needs at least two rows; got ", nrow(matrix), ".")
     return(NULL)
   }
   arrange <- match.arg(arrange)
@@ -626,7 +690,7 @@ plot_raster <- function(
 #' @export
 #' @keywords internal
 #' @family plotting
-#' @examples
+#' @examplesIf requireNamespace("ComplexHeatmap", quietly = TRUE) && requireNamespace("circlize", quietly = TRUE)
 #'
 #' istar <- sim_lfq_data_peptide_config()
 #' lfq <- LFQData$new(istar$data, istar$config)
@@ -635,18 +699,18 @@ plot_raster <- function(
 #' stopifnot(methods::is(tmp, "Heatmap"))
 #'
 plot_na_heatmap <- function(matrix, annotation, factor_keys, sample_name, limitrows = 10000, distance = "binary") {
-  stopifnot(annotation[[sample_name]] %in% colnames(matrix))
+  rlang::check_installed(c("ComplexHeatmap", "circlize"), reason = "for heatmaps.")
+  if (!all(annotation[[sample_name]] %in% colnames(matrix))) {
+    abort_bad_argument("annotation", "name only samples that are columns of `matrix`")
+  }
 
   matrix[!is.na(matrix)] <- 0
   matrix[is.na(matrix)] <- 1
-  allrows <- nrow(matrix)
   matrix <- matrix[rowSums(matrix) > 0, , drop = FALSE]
-
-  message("rows with NA's: ", nrow(matrix), "; all rows :", allrows, "\n")
 
   if (nrow(matrix) > 1) {
     matrix <- if (nrow(matrix) > limitrows) {
-      message("limiting nr of rows to:", limitrows, "\n")
+      inform_prolfqua("limiting nr of rows to: ", limitrows)
       matrix[sample(seq_len(nrow(matrix)), limitrows), ]
     } else {
       matrix
@@ -698,20 +762,22 @@ plot_na_heatmap <- function(matrix, annotation, factor_keys, sample_name, limitr
 #' stopifnot("ggplot" %in% class(tmp))
 #'
 plot_pca <- function(matrix, annotation, sample_name, factor_keys, PC = c(1, 2), add_txt = FALSE, nudge = 0.1) {
-  stopifnot(length(PC) == 2)
+  if (length(PC) != 2) {
+    abort_bad_argument("PC", "be two principal component numbers", not = toString(PC))
+  }
   impute_hint <- "missing values first, e.g. AggregateLimpa$new(lfqdata, impute_only = TRUE)$aggregate()."
 
   # Duplicated sample names become duplicated row names after transpose and
   # cause a cartesian expansion in the join below — error early instead.
   dup_samples <- unique(colnames(matrix)[duplicated(colnames(matrix))])
   if (length(dup_samples) > 0) {
-    stop(sprintf("PCA: duplicated sample names are not allowed: %s.", paste(dup_samples, collapse = ", ")))
+    abort_prolfqua(sprintf("PCA: duplicated sample names are not allowed: %s.", toString(dup_samples)))
   }
 
-  if (any(is.na(matrix))) {
+  if (anyNA(matrix)) {
     n_before <- nrow(matrix)
     matrix <- na.omit(matrix)
-    message(sprintf(
+    inform_prolfqua(sprintf(
       "PCA: removed %s of %s features with missing values. To keep all features, impute %s",
       n_before - nrow(matrix),
       n_before,
@@ -722,14 +788,14 @@ plot_pca <- function(matrix, annotation, sample_name, factor_keys, PC = c(1, 2),
   # prcomp() errors on a 0-row matrix, which happens when every feature had at
   # least one missing value. Fail with an actionable message instead.
   if (nrow(matrix) == 0) {
-    stop("PCA: no features without missing values remain after NA filtering. Impute ", impute_hint)
+    abort_prolfqua("PCA: no features without missing values remain after NA filtering. Impute ", impute_hint)
   }
 
   # Centered data has rank at most (n_samples - 1), so component max(PC) only
   # exists when there are at least max(PC) + 1 samples. Guard before prcomp() so
   # the caller (e.g. pca_plotly()) gets a clear error rather than a NULL plot.
   if (ncol(matrix) <= max(PC)) {
-    stop(sprintf(
+    abort_prolfqua(sprintf(
       "PCA: need at least %s samples to plot principal components %s and %s; got %s.",
       max(PC) + 1,
       PC[1],
@@ -743,7 +809,7 @@ plot_pca <- function(matrix, annotation, sample_name, factor_keys, PC = c(1, 2),
   variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2) * 100
 
   if (max(PC) > (ncol(xx) - 1)) {
-    stop(sprintf(
+    abort_prolfqua(sprintf(
       "PCA: requested principal component %s but only %s principal component(s) could be computed %s",
       max(PC),
       ncol(xx) - 1,

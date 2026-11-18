@@ -1,31 +1,32 @@
 Package: prolfqua
 Type: Package
 Title: Proteomics Label Free Quantification
-Version: 0.99.12
+Version: 0.99.13
 Authors@R: c(
     person("Witold", "Wolski",
         email = "witold.wolski@fgcz.uzh.ch",
         role = "aut",
         comment = c(ORCID = "0000-0002-6468-120X")),
     person("Functional Genomics Center Zurich",
-        role = "fnd"),
+        role = "fnd",
+        comment = c(ROR = "04tgr1802")),
     person("Christian", "Panse",
         email = "cp@fgcz.ethz.ch",
         role = "cre",
         comment = c(ORCID = "0000-0003-1975-3064")))
-Description: prolfqua covers the steps of a mass spectrometry based
-    label-free quantification (LFQ) analysis: quality control, normalization,
-    aggregation of peptides to proteins, modelling, hypothesis testing and
-    sample size estimation. A single function, build_contrast_analysis(), fits a
-    model per protein and computes contrasts with one of many methods: linear,
-    robust and rank-based regression, limma and limma-voom, DEqMS variance
-    moderation, limpa's detection probability model, Firth logistic and binomial
-    models of detection, mixed models and ROPECA on peptide-level data, a hurdle
-    model combining intensity and detection, and variants that impute groups
-    without observations at the limit of detection. All methods return their
-    results through the same interface and columns, so they can be compared and
-    combined. prolfqua models simple designs with one explanatory variable as
-    well as experiments with several factors, and was developed while analysing
+Description: Covers the steps of a mass spectrometry based label-free
+    quantification (LFQ) analysis: quality control, normalization, aggregation
+    of peptides to proteins, modelling, hypothesis testing and sample size
+    estimation. A single function, build_contrast_analysis(), fits a model per
+    protein and computes contrasts with one of many methods: linear, robust and
+    rank-based regression, 'limma' and 'limma'-voom, 'DEqMS' variance
+    moderation, the detection probability model of 'limpa', Firth logistic and
+    binomial models of detection, mixed models and ROPECA on peptide-level
+    data, a hurdle model combining intensity and detection, and variants that
+    impute groups without observations at the limit of detection. All methods
+    return their results through the same interface and columns, so they can be
+    compared and combined. Models simple designs with one explanatory variable
+    as well as experiments with several factors. Developed while analysing
     dozens of proteomics datasets at the Functional Genomics Center Zurich.
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -34,55 +35,55 @@ URL: https://github.com/fgcz/prolfqua,
     https://fgcz.github.io/prolfqua/
 BugReports: https://github.com/fgcz/prolfqua/issues
 Imports:
-    circlize,
-    ComplexHeatmap,
     dplyr,
-    forcats,
     ggplot2,
-    ggbeeswarm,
     ggrepel,
     limma,
-    lme4,
-    lmerTest,
-    logistf,
     MASS,
     methods,
-    plotly,
-    progress,
     purrr,
+    R6,
     rlang,
     stringi,
-    tidyselect,
     tidyr (>= 1.3.0),
     tibble,
-    UpSetR,
     withr
 Suggests:
     BiocCheck,
     BiocStyle,
+    circlize,
+    ComplexHeatmap,
     corrplot,
     covr,
     crosstalk,
     cyclocomp,
     devtools,
+    ggbeeswarm,
     goodpractice,
     gridExtra,
     KernSmooth,
     knitr,
     limpa,
     lintr,
+    lme4,
+    lmerTest,
+    logistf,
     pkgdown,
+    plotly,
     preprocessCore,
+    progress,
     rcmdcheck,
     Rfit,
     rmarkdown,
     roxygen2,
     S4Vectors,
+    ssize.fdr,
     SummarizedExperiment,
     testthat,
+    UpSetR,
     vsn
-Roxygen: list(r6 = TRUE)
+Roxygen: list(r6 = TRUE, roclets = c("collate", "namespace", "rd", "srr::srr_stats_roclet"))
 Depends: 
     R (>= 4.6)
-biocViews: MassSpectrometry, Proteomics, Metabolomics, Normalization, Preprocessing, QualityControl
+biocViews: MassSpectrometry, Proteomics, Metabolomics, Normalization, Preprocessing, QualityControl, FunctionalGenomics, Regression
 Config/roxygen2/version: 8.1.1

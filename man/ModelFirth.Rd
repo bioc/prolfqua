@@ -10,6 +10,7 @@ An R6 class generator.
 R6 class representing modelling result
 }
 \examples{
+\dontshow{if (requireNamespace("logistf", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 istar <- prolfqua::sim_lfq_data_protein_config(Nprot = 10, with_missing = TRUE,
   weight_missing = 0.5, seed = 3)
 istar$data <- prolfqua::encode_bin_resp(LFQData$new(istar$data, istar$config))
@@ -24,6 +25,7 @@ mod$coef_pairs()
 mod$get_anova()
 mod$coef_volcano()
 mod$anova_histogram()
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other modelling:
@@ -100,7 +102,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},
@@ -208,13 +212,13 @@ data.frame and the \code{strategy}}
   histogram of ANOVA results
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{ModelFirth$anova_histogram(what = c("p.value", "FDR"))}
+    \preformatted{ModelFirth$anova_histogram(what = "p.value")}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{what}}{show either "Pr..F." or "FDR.Pr..F."}
+      \item{\code{what}}{one case-sensitive choice: "p.value" (default) or "FDR".}
     }
     \if{html}{\out{</div>}}
   }

@@ -19,8 +19,8 @@ compute_borrowed_variance(
 \item{on_misalign}{behaviour when donor \code{vcov} matrices cannot be
 aligned by coefficient name (\code{method = "vcov"} only). "fallback"
 (default) warns and falls back to the sigma method, preserving the lm
-behaviour. "fail" signals a \code{prolfqua_borrow_failed} condition so the
-caller can skip the rescue; backends without an lm-style
+behaviour. "fail" borrows from the largest subset sharing the maximal
+coefficient set without a sigma fallback; backends without an lm-style
 \code{summary(fit)$cov.unscaled} (e.g. rfit) must use this because the
 sigma fallback is not applicable to them.}
 }
@@ -124,7 +124,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

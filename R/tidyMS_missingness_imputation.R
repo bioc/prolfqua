@@ -7,7 +7,7 @@
 #' @return An R6 class generator.
 #' @export
 #' @examples
-#' dd <- prolfqua::sim_lfq_data_protein_config(Nprot = 100,weight_missing = 2)
+#' dd <- prolfqua::sim_lfq_data_protein_config(Nprot = 100,weight_missing = 1)
 #' mh <- prolfqua::MissingHelpers$new(dd$data, dd$config, prob = 0.8)
 #' xx <- mh$get_stats()
 #' xx <- mh$get_lod()
@@ -69,11 +69,17 @@ MissingHelpers <- R6::R6Class(
   )
 )
 
-# Groups seen once are the nearest the data comes to its detection limit. A
-# nearly complete dataset can have none while one feature still misses a whole
-# group and needs a value to refit, so the partly observed groups with the
-# fewest observations stand in, and when every group is complete or empty, the
-# lowest group mean.
+#' Groups seen once are the nearest the data comes to its detection limit. A
+#'
+#' nearly complete dataset can have none while one feature still misses a whole
+#' group and needs a value to refit, so the partly observed groups with the
+#' fewest observations stand in, and when every group is complete or empty, the
+#' lowest group mean.
+#' @param stats group means and observation counts
+#' @param prob quantile used to estimate the detection limit
+#' @noRd
+#' @srrstatsTODO {G2.15} LOD estimation excludes unavailable group means; limit: missing handling is not audited across
+#'   every helper.
 .lod_from_group_stats <- function(stats, prob) {
   measured <- dplyr::filter(stats, .data$nrMeasured > 0)
   partial <- dplyr::filter(measured, .data$nrMeasured == 1 | .data$nrMeasured < .data$nrReplicates)

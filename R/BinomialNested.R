@@ -1,7 +1,12 @@
 # Binomial detection model ----
 
+#' Count detected and undetected child features per parent and sample
+#' @param lfqdata LFQData containing the measurements and configuration
+#' @noRd
 .summarize_detection_counts <- function(lfqdata) {
-  stopifnot("LFQData" %in% class(lfqdata))
+  if (!inherits(lfqdata, "LFQData")) {
+    abort_bad_argument("lfqdata", "be an LFQData object")
+  }
   bin_resp <- lfqdata$get_config()$bin_resp
   grouping <- unique(c(
     lfqdata$subject_id(),
@@ -19,11 +24,15 @@
     ) |>
     dplyr::mutate(undetected = .data$available - .data$detected)
 
-  stopifnot(all(counts$detected >= 0L))
-  stopifnot(all(counts$undetected >= 0L))
+  if (!isTRUE(all(counts$detected >= 0L) && all(counts$undetected >= 0L))) {
+    abort_prolfqua("internal error: negative detection counts")
+  }
   counts
 }
 
+#' Validate the symmetric binomial pseudo-count
+#' @param prior_count non-negative symmetric detection pseudo-count
+#' @noRd
 .validate_binomial_prior_count <- function(prior_count) {
   candidate <- if (is.numeric(prior_count)) prior_count else NA_real_
   is_valid <- all(c(
@@ -33,7 +42,7 @@
     candidate >= 0
   ))
   if (!is_valid) {
-    stop("`prior_count` must be one non-negative number.", call. = FALSE)
+    abort_bad_argument("prior_count", "be one non-negative number")
   }
   prior_count
 }
@@ -57,6 +66,11 @@
 #' strategy <- StrategyBinomial$new("~ group_")
 #' fit <- strategy$model_fun(dat)
 #' coefficients(fit)
+#' @srrstats {G5.8d} Tests reject inappropriate hierarchy, rank deficiency, insufficient residual df and too few PCA
+#'   samples.
+#' @srrstatsTODO {RE7.0} Tests exercise collinearity in binomial/rfit designs; limit: lm/limma coverage is incomplete.
+#' @srrstatsTODO {RE7.0a} Binomial/rfit tests check deficient-design behavior; a shared lm/limma rejection test is
+#'   absent.
 StrategyBinomial <- R6::R6Class(
   "StrategyBinomial",
   inherit = StrategyBase,
@@ -85,10 +99,10 @@ StrategyBinomial <- R6::R6Class(
     fit = function(x) {
       model <- stats::glm(self$formula, data = x, family = stats::quasibinomial())
       if (anyNA(stats::coef(model)) || model$rank < length(stats::coef(model))) {
-        stop("binomial design is rank-deficient")
+        abort_prolfqua("binomial design is rank-deficient")
       }
       if (stats::df.residual(model) < 2L) {
-        stop("binomial model requires at least two residual degrees of freedom")
+        abort_prolfqua("binomial model requires at least two residual degrees of freedom")
       }
       model
     }
@@ -162,7 +176,7 @@ StrategyBinomialFirth <- R6::R6Class(
         weight <- trials * stats::fitted(model) * (1 - stats::fitted(model))
         hat <- weight * rowSums((design %*% solve(crossprod(design, weight * design))) * design)
       }
-      stop("Firth iteration did not converge")
+      abort_prolfqua("Firth iteration did not converge")
     }
   )
 )

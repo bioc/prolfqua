@@ -16,10 +16,10 @@
 #' with \code{\link{AggregateLimpa}}.
 #'
 #' @param lfqdata an \code{\link{LFQData}} object
-#' @param modelstr model formula string without the response variable
+#' @param modelstr one right-hand-side formula string without the response variable
 #'   (e.g. \code{"~ group_"}). The response is taken automatically from
 #'   \code{lfqdata$get_config()$get_response()}.
-#' @param contrasts named character vector of contrasts
+#' @param contrasts nonempty named character vector of contrast expressions
 #'   (e.g. \code{c("A_vs_B" = "group_A - group_B")})
 #' @param method a registered facade key. The built-in keys are:
 #'   linear models \code{"lm"}, \code{"rlm"}, \code{"rfit"};
@@ -33,15 +33,57 @@
 #'   \code{"binomial_firth_nested"};
 #'   the hurdle model \code{"hurdle_nested"}, combining intensity and detection.
 #'   Downstream packages may add more via \code{\link{register_facade}}. The
+#'   Keys and column names are case sensitive and must match exactly. The
 #'   authoritative list is \code{names(\link{list_facades}())}. Defaults to
 #'   \code{"lm"}.
 #' @param ... additional arguments forwarded to the underlying strategy function
 #'   (e.g. \code{trend}, \code{robust} for \code{strategy_limma})
+#' @details The formula is translated into a design matrix with R's current
+#'   contrast options (normally treatment coding). Configured predictors are
+#'   categorical labels; their reference level is normally the first sorted
+#'   level. Each contrast expression combines group-level coefficient weights,
+#'   rather than referring directly to design-matrix coefficient names. For
+#'   example, \code{"group_A - group_Ctrl"} subtracts the control group mean
+#'   from the A group mean, including the reference coefficient as needed.
+#'   Interaction cell means are named with a colon and quoted with backticks
+#'   inside expressions. See the \emph{Under the hood} article for worked
+#'   one-factor and \code{~ A * B} design matrices and linear functions.
+#'
+#'   Internally, \code{limpa_nested} and \code{hurdle_nested} aggregate child
+#'   features to proteins. Detection methods (\code{binomial_nested},
+#'   \code{binomial_firth_nested}, \code{firth}, and the detection component
+#'   of \code{hurdle_nested}) encode intensities as detected/not detected.
+#'   These aggregation and detection steps have no inverse. The analysis keeps
+#'   its input in \code{analysis$.lfqdata}; for aggregated input this is already
+#'   at the modelled hierarchy. \code{fitted()} and \code{residuals()} expose
+#'   the modelled observed responses (inspect each hurdle component separately).
+#'   Intensity effects are differences on the modelled scale, hence log2 fold
+#'   changes for log2 responses; detection effects are log odds ratios, with
+#'   fitted responses reported as probabilities. Transformations performed
+#'   before this call retain their input columns in LFQData; this call does not
+#'   record a transformation history or infer inverse transformations.
+#'
+#'   With a fixed design and fixed observations per protein, the per-protein
+#'   \code{lm} and \code{lmer_nested} fitting loops grow approximately linearly
+#'   with the number of proteins and run sequentially. \code{limma} fits the
+#'   expression matrix in one call and has lower per-protein overhead.
+#'   Single-run elapsed seconds for 500, 1000 and 2000 proteins were respectively
+#'   0.173, 0.288 and 0.592 for \code{lm}; 0.077, 0.043 and 0.050 for
+#'   \code{limma}; and 7.902, 15.314 and 29.667 for \code{lmer_nested}
+#'   (R 4.6.2, arm64 macOS, 12 samples, three peptides per protein for the
+#'   nested model, no missing responses). These timings cover facade
+#'   construction, including fitting, but exclude lazy contrast extraction.
+#'   They are illustrative timings, not guarantees: sample count, design width,
+#'   missingness and mixed-model convergence affect cost. Some mixed fits in
+#'   this run emitted convergence warnings. Reproduction code and environment
+#'   details are in \code{srr/benchmark-runtime.R} in the source repository.
 #' @return a facade object of the class registered for \code{method}, see
 #'   \code{\link{lookup_facade}}.
 #' @export
+#' @srrstats {RE4.12} Modelling aggregation and detection encoding, their retained responses and lack of inverses
+#'   are documented; preceding user transformations retain their input columns.
 #' @family modelling
-#' @examples
+#' @examplesIf requireNamespace("lme4", quietly = TRUE) && requireNamespace("lmerTest", quietly = TRUE)
 #' istar <- sim_lfq_data_protein_config(Nprot = 20)
 #' lfqdata <- LFQData$new(istar$data, istar$config)
 #' lfqdata$rename_response("transformedIntensity")
@@ -73,6 +115,16 @@
 #'
 #' fa_firth <- build_contrast_analysis(lfqdata, "~ group_", contrasts, method = "firth")
 #' head(fa_firth$get_contrasts())
+#' @srrstatsTODO {G1.1} The builder lists inherited methods; per-algorithm novelty classifications are incomplete.
+#' @srrstatsTODO {G1.6} The article compares facades; limit: comparisons with alternative R packages remain external.
+#' @srrstatsTODO {G2.1a} The builder documents LFQData, formula strings and named contrasts; limit: types are not
+#'   exhaustive API-wide.
+#' @srrstats {G2.3b} Builder help explicitly requires case-sensitive method keys and column names.
+#' @srrstats {RE1.0} The builder takes a validated RHS formula and strategies retain the full response formula.
+#' @srrstatsTODO {RE2.1} Plain versus imputed methods are selectable; limit: there is no common NA/NaN/Inf processing
+#'   parameter.
+#' @srrstats {RE5.0} Builder details report measured scaling for three methods; source benchmark states design and
+#'   timing limits.
 build_contrast_analysis <- function(
   lfqdata,
   modelstr,
@@ -83,17 +135,10 @@ build_contrast_analysis <- function(
   # The facade registry (seeded by .seed_facade_registry(), extensible via
   # register_facade()) is the single source of truth for method -> class.
   choices <- names(list_facades())
-  method <- tryCatch(
-    match.arg(method, choices),
-    error = function(e) {
-      abort_bad_argument(
-        "method",
-        must = paste0("be one of: ", paste(choices, collapse = ", ")),
-        not = paste(method, collapse = ", "),
-        parent = e
-      )
-    }
-  )
+  if (!inherits(lfqdata, "LFQData")) {
+    abort_bad_argument("lfqdata", "be an LFQData object")
+  }
+  method <- .arg_match_prolfqua(method, choices, "method")
   entry <- lookup_facade(method)
   # Decoys must not enter the fit or the shared variance pool (limma prior /
   # DEqMS variance-count trend), where they would perturb *target* q-values.
@@ -107,7 +152,7 @@ build_contrast_analysis <- function(
     lfqdata <- lfqdata$remove_decoys()
     n_dropped <- n_before - length(unique(lfqdata$data_long()[[top]]))
     if (n_dropped > 0) {
-      message(
+      inform_prolfqua(
         "build_contrast_analysis: dropped ",
         n_dropped,
         " decoy ",

@@ -11,6 +11,7 @@ Fits Firth's logistic regression per subject to the binary detection
 response of aggregated data, one row per subject and sample.
 }
 \examples{
+\dontshow{if (requireNamespace("logistf", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 istar <- prolfqua::sim_lfq_data_protein_config(Nprot = 10, with_missing = TRUE,
   weight_missing = 0.5, seed = 3)
 istar$data <- prolfqua::encode_bin_resp(LFQData$new(istar$data, istar$config))
@@ -22,6 +23,7 @@ xx <- build_model_logistf(tmp, formula)
 contrasts <- c(AvsB = "group_A - group_B")
 m <- xx$models$model_df$linear_model[[1]]
 linfct_matrix_contrasts(linfct_from_model(m)$linfct_factors, contrasts)
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other modelling:
@@ -98,7 +100,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

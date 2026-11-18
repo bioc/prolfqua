@@ -20,11 +20,13 @@ Encodes missingness as a binary response and fits the Firth logistic backend
 used by the missingness model path in \code{prolfquapp}.
 }
 \examples{
+\dontshow{if (requireNamespace("logistf", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 istar <- sim_lfq_data_protein_config(
   Nprot = 10, with_missing = TRUE, weight_missing = 0.5, seed = 3)
 lfqdata <- LFQData$new(istar$data, istar$config)
 mod <- build_model_glm_protein(lfqdata, "~ group_")
 head(mod$get_coefficients())
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other modelling:
@@ -101,7 +103,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

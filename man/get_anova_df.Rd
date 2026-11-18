@@ -6,6 +6,13 @@
 \usage{
 get_anova_df(test = "F")
 }
+\arguments{
+\item{test}{one case-sensitive test choice: "F", "Chisq", "LRT", "Rao" or "Cp".
+The fitted model's ANOVA method must support the chosen test.}
+}
+\value{
+An \code{\link{AnovaExtractor}} object.
+}
 \description{
 anova returning dataframe
 }
@@ -88,7 +95,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

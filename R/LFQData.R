@@ -6,8 +6,10 @@
 #' The filtering and imputation methods in this package assume that
 #' missing values are Missing Completely At Random (MCAR) or Missing At
 #' Random (MAR). Abundance-dependent missingness (MNAR), which is common
-#' in DDA proteomics, is not modelled. Users should be aware that MNAR
-#' can bias fold-change estimates and inflate false discovery rates.
+#' in DDA proteomics, is not modelled. When low intensities are missing,
+#' fold changes of down-regulated proteins shrink toward zero; LOD imputation
+#' (the \code{_impute} methods) caps estimates at the LOD and does not remove
+#' this bias. MNAR can also inflate false discovery rates.
 #'
 #' @return An R6 class generator.
 #' @export
@@ -40,6 +42,9 @@
 #' tmp <-lfqdata$get_sample(5, seed = 4)
 #' stopifnot(nrow(tmp$hierarchy()) == 5)
 #'
+#' @srrstats {G2.8} LFQData wraps validated numeric measurements and their AnalysisConfiguration for all facades.
+#' @srrstats {RE4.13} LFQData exposes categorical predictor values, factor keys and configuration.
+#' @srrstats {RE7.2} Tests preserve subject IDs and sample alignment, including wide-to-long roundtrips.
 LFQData <- R6::R6Class(
   "LFQData",
   private = list(
@@ -87,6 +92,7 @@ LFQData <- R6::R6Class(
     #' @param prefix will be use as output prefix
     #' @param setup is data setup needed, default = FALSE, if TRUE, calls \code{\link{setup_analysis}} on data first.
     initialize = function(data, config, prefix = "ms_", setup = FALSE) {
+      .assert_response_data(data, config)
       private$.data <- if (setup) {
         setup_analysis(data, config)
       } else {
@@ -198,7 +204,7 @@ LFQData <- R6::R6Class(
       parent <- parent %||% keys[1]
       child <- child %||% keys[2]
       threshold <- threshold %||% cfg$min_peptides_protein
-      message("removing ", parent, " with fewer than ", threshold, " ", child)
+      inform_prolfqua("removing ", parent, " with fewer than ", threshold, " ", child)
       filtered <- filter_proteins_by_peptide_count(
         self$data_long(),
         cfg,
@@ -206,7 +212,7 @@ LFQData <- R6::R6Class(
         child = child,
         threshold = threshold
       )
-      message("Column added : ", filtered$name)
+      inform_prolfqua("Column added : ", filtered$name)
       private$.data <- filtered$data
       invisible(self)
     },
@@ -262,7 +268,9 @@ LFQData <- R6::R6Class(
     data_wide = function(as.matrix = FALSE, value = NULL) {
       cfg <- self$get_config()
       if (!is.null(value)) {
-        stopifnot(value %in% cfg$value_vars())
+        if (!all(value %in% cfg$value_vars())) {
+          abort_bad_argument("value", paste0("be one of ", toString(cfg$value_vars())), not = value)
+        }
       }
       wide <- prolfqua::tidy_to_wide_config(self, as.matrix = as.matrix, value = value %||% self$response())
       wide$config <- cfg$clone(deep = TRUE)
@@ -402,13 +410,13 @@ LFQData <- R6::R6Class(
     #' @param ... passed to aggregator constructor (e.g. prefix, N, func, dpc_slope)
     #' @return AggregateMedpolish, AggregateRlm, AggregateTopN, or AggregateLimpa
     get_Aggregator = function(method = "medpolish", ...) {
+      method <- .arg_match_prolfqua(method, c("medpolish", "rlm", "topN", "limpa"), "method")
       switch(
         method,
         "medpolish" = AggregateMedpolish$new(self, ...),
         "rlm" = AggregateRlm$new(self, ...),
         "topN" = AggregateTopN$new(self, ...),
-        "limpa" = AggregateLimpa$new(self, ...),
-        abort_bad_argument("method", 'be one of: "medpolish", "rlm", "topN", "limpa"', not = method)
+        "limpa" = AggregateLimpa$new(self, ...)
       )
     }
   )

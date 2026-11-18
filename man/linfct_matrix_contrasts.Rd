@@ -2,7 +2,7 @@
 % Please edit documentation in R/tidyMS_contrasts.R
 \name{linfct_matrix_contrasts}
 \alias{linfct_matrix_contrasts}
-\title{linfct_matrix_contrasts}
+\title{Convert named group-mean contrasts to coefficient weights}
 \usage{
 linfct_matrix_contrasts(linfct, contrasts, p.message = FALSE)
 }
@@ -14,7 +14,16 @@ linfct_matrix_contrasts(linfct, contrasts, p.message = FALSE)
 \item{p.message}{print messages default FALSE}
 }
 \description{
-linfct_matrix_contrasts
+Convert named group-mean contrasts to coefficient weights
+}
+\details{
+Rows of \code{linfct} represent group or interaction means and
+  columns represent fitted coefficients. Contrast expressions combine these
+  rows, so \code{"group_A - group_Ctrl"} becomes their row difference.
+  Quote interaction names containing colons with backticks. Expressions may
+  reference earlier named contrasts. A row naming a group unavailable in a
+  particular model is dropped with a warning. The returned matrix has one
+  row per estimable contrast and coefficient columns in model order.
 }
 \examples{
 
@@ -115,7 +124,9 @@ Other modelling:
 \code{\link[=moderated_p_deqms_long]{moderated_p_deqms_long()}},
 \code{\link[=moderated_p_limma]{moderated_p_limma()}},
 \code{\link[=new_imputed_model]{new_imputed_model()}},
+\code{\link[=nobs.rfit_prolfqua]{nobs.rfit_prolfqua()}},
 \code{\link[=pivot_model_contrasts_to_wide]{pivot_model_contrasts_to_wide()}},
+\code{\link{prolfqua_analysis_methods}},
 \code{\link[=register_facade]{register_facade()}},
 \code{\link[=sigma.rfit_prolfqua]{sigma.rfit_prolfqua()}},
 \code{\link[=sim_build_models_lm]{sim_build_models_lm()}},

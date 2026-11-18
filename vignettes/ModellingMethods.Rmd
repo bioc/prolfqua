@@ -19,7 +19,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE, warning 
 
 `build_contrast_analysis()` selects the model with its `method` argument. This vignette runs every method listed by `list_facades()` on one small simulated dataset and shows one line of output per method. Plots and a discussion of the methods are in the article [Comparing modelling methods on one dataset](https://fgcz.github.io/prolfqua/articles/ComparingMethods.html).
 
-```{r factory, echo = FALSE, out.width = "100%", fig.cap = "build_contrast_analysis() is a factory: the method key selects the model, and every model rolls out with the same interface."}
+```{r factory, echo = FALSE, purl = FALSE, out.width = "100%", fig.cap = "build_contrast_analysis() is a factory: the method key selects the model, and every model rolls out with the same interface."}
 knitr::include_graphics("../man/figures/prolfqua_factory.png")
 ```
 
@@ -39,7 +39,7 @@ contrasts <- c(A_vs_Ctrl = "group_A - group_Ctrl")
 
 Each method declares the input it needs:
 
-- `same`: protein-level input, here `lfq_protein` aggregated with median polish. `limpa` takes `lfq_limpa`, aggregated by `AggregateLimpa`, which adds the per-protein standard errors it needs.
+- `aggregated`: protein-level input, here `lfq_protein` aggregated with median polish. `limpa` takes `lfq_limpa`, aggregated by `AggregateLimpa`, which adds the per-protein standard errors it needs.
 - `nested`: peptide-level input, `lfq_peptide`. The method models the peptides and reports protein-level contrasts.
 
 # Fit all methods
@@ -109,6 +109,35 @@ one <- lapply(results, function(x) x[x$protein_Id == top, c("diff", "p.value", "
 one <- dplyr::bind_rows(one, .id = "method")
 knitr::kable(one, digits = 3)
 ```
+
+# Inspecting a fitted analysis
+
+The fitted analysis supports standard R methods. `print()` gives the model specification, fit counts and a coefficient preview without calculating contrasts. `summary()` evaluates the contrasts and counts estimated, missing and significant results; the significance defaults are FDR < 0.05 and absolute effect > 1.
+
+```{r inspect-analysis}
+analysis <- build_contrast_analysis(lfq_protein, "~ group_", contrasts, method = "lm")
+print(analysis)
+summary(analysis)
+head(coef(analysis))
+head(vcov(analysis))
+head(confint(analysis))
+formula(analysis)
+head(nobs(analysis))
+head(fitted(analysis))
+head(residuals(analysis))
+plot(analysis)
+plot(analysis, type = "volcano")
+```
+
+Coefficient tables describe the fitted model; requested comparisons remain available through `analysis$get_contrasts()`. Confidence intervals are Wald t intervals, with moderated standard errors and degrees of freedom for limma and normal Wald intervals for the Firth logistic backend. ROPECA coefficient tables are keyed by protein and peptide because those methods fit peptide-level models.
+
+`vcov()` returns the coefficient covariance as a long table keyed by subject, `term` and `term2`. LOD-refitted models use their borrowed covariance; matrix models use the moderated variance and each subject's weighted design. The default plot shows observed responses and fitted group means with confidence intervals for the six subjects with the smallest FDR in the first contrast. Select other subjects with `plot(analysis, subject = top, level = 0.9)`. Points and intervals share the modelled response scale; detection models show probabilities, and mixed models use fixed-effect means with Satterthwaite intervals. For multiple factors, the plotted means correspond to factor combinations. ROPECA plots have one panel per peptide of each selected protein. Volcano and MA plots remain available through `type = "volcano"` and `type = "ma"`; combined hurdle analyses default to volcano and require selecting an intensity or detection component for a fitted plot.
+
+The modelling call retains its input, and the fitted-value and residual accessors retain observed modelled responses. Internal child-feature aggregation and detection encoding have no inverse. Preceding LFQData transformations retain their original input columns; they are not recorded as a new transformation-history object. See `?build_contrast_analysis` for the affected methods and output scales.
+
+Fitted values and residuals retain sample, factor and available child-feature identifiers. They include observed responses from successful fits and a subject-level `imputed` flag; rows filled during LOD imputation are excluded. The values use the fitting scale: log2 intensity here, and probabilities for detection models. Binomial detection responses are the adjusted proportions used in fitting; response residuals equal response minus fitted probability. `nobs()` excludes imputed observations.
+
+Hurdle results combine two fitted models. Their print, summary and plot methods describe the combined analysis; use `analysis$contrast$intensity` or `analysis$contrast$detection` for coefficients, formula, observation counts, fitted values and residuals.
 
 # Session info
 
